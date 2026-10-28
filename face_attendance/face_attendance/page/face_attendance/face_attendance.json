@@ -1,0 +1,22 @@
+{
+  "doctype": "Page",
+  "name": "face-attendance",
+  "page_name": "face-attendance",
+  "title": "Face Attendance",
+  "module": "Face Attendance",
+  "standard": "Yes",
+  "roles": [
+    {
+      "role": "System Manager"
+    },
+    {
+      "role": "HR Manager"
+    },
+    {
+      "role": "HR User"
+    },
+    {
+      "role": "Employee"
+    }
+  ]
+}

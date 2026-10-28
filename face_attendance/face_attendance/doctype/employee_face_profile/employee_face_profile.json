@@ -1,0 +1,147 @@
+{
+  "actions": [],
+  "allow_rename": 0,
+  "autoname": "field:employee",
+  "creation": "2026-10-26 06:00:00.000000",
+  "custom": 0,
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "employee",
+    "employee_name",
+    "image",
+    "column_break_main",
+    "active",
+    "is_enrolled",
+    "section_break_system",
+    "embedding",
+    "enrolled_by",
+    "column_break_sys",
+    "enrolled_on"
+  ],
+  "fields": [
+    {
+      "fieldname": "employee",
+      "fieldtype": "Link",
+      "in_list_view": 1,
+      "label": "Employee",
+      "options": "Employee",
+      "reqd": 1,
+      "unique": 1
+    },
+    {
+      "fetch_from": "employee.employee_name",
+      "fieldname": "employee_name",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Employee Name",
+      "read_only": 1
+    },
+    {
+      "fieldname": "image",
+      "fieldtype": "Attach Image",
+      "in_list_view": 1,
+      "label": "Face Image"
+    },
+    {
+      "fieldname": "column_break_main",
+      "fieldtype": "Column Break"
+    },
+    {
+      "default": "1",
+      "fieldname": "active",
+      "fieldtype": "Check",
+      "in_list_view": 1,
+      "label": "Active"
+    },
+    {
+      "default": "0",
+      "fieldname": "is_enrolled",
+      "fieldtype": "Check",
+      "in_list_view": 1,
+      "label": "Is Enrolled",
+      "read_only": 1
+    },
+    {
+      "collapsible": 1,
+      "fieldname": "section_break_system",
+      "fieldtype": "Section Break",
+      "label": "Enrollment Details"
+    },
+    {
+      "fieldname": "embedding",
+      "fieldtype": "Long Text",
+      "hidden": 1,
+      "label": "Face Embedding",
+      "no_copy": 1,
+      "reqd": 0
+    },
+    {
+      "fieldname": "enrolled_by",
+      "fieldtype": "Link",
+      "label": "Enrolled By",
+      "options": "User",
+      "read_only": 1
+    },
+    {
+      "fieldname": "column_break_sys",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "enrolled_on",
+      "fieldtype": "Datetime",
+      "label": "Enrolled On",
+      "read_only": 1
+    }
+  ],
+  "index_web_pages_for_search": 0,
+  "links": [],
+  "modified": "2026-10-28 10:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "Face Attendance",
+  "name": "Employee Face Profile",
+  "naming_rule": "By fieldname",
+  "owner": "Administrator",
+  "permissions": [
+    {
+      "create": 1,
+      "delete": 1,
+      "email": 1,
+      "export": 0,
+      "print": 1,
+      "read": 1,
+      "report": 1,
+      "role": "System Manager",
+      "share": 0,
+      "write": 1
+    },
+    {
+      "create": 1,
+      "delete": 0,
+      "email": 1,
+      "export": 0,
+      "print": 1,
+      "read": 1,
+      "report": 1,
+      "role": "HR Manager",
+      "share": 0,
+      "write": 1
+    },
+    {
+      "create": 0,
+      "delete": 0,
+      "email": 0,
+      "export": 0,
+      "print": 0,
+      "read": 1,
+      "report": 0,
+      "role": "Employee",
+      "share": 0,
+      "write": 0
+    }
+  ],
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "states": [],
+  "track_changes": 1
+}

@@ -1,0 +1,1 @@
+recursive-include face_attendance *.json *.js *.py *.md *.txt

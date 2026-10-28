@@ -5,63 +5,169 @@ frappe.pages["face-attendance"].on_page_load = function (wrapper) {
         single_column: true
     });
 
-    page.main.html(`
-        <div class="face-attendance-wrap" style="max-width:900px;margin:0 auto">
-          <div class="alert alert-info">
-            Face identification only suggests an employee. You must confirm IN or OUT to create an Employee Checkin.
-            Camera access requires HTTPS (or localhost) and browser permission.
-          </div>
-          <div class="row">
-            <div class="col-md-7">
-              <video id="fa-video" autoplay playsinline muted style="width:100%;max-height:440px;background:#111;border-radius:8px"></video>
-              <canvas id="fa-canvas" style="display:none"></canvas>
-              <div class="mt-3">
-                <button class="btn btn-default" id="fa-start">Start Camera</button>
-                <button class="btn btn-primary" id="fa-identify" disabled>Identify Employee</button>
-              </div>
+    const template_html = frappe.templates["face_attendance"] || `
+        <div class="fa-container">
+            <div class="fa-header-bar">
+                <div class="fa-header-title">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M9 3H5a2 2 0 0 0-2 2v4m0 6v4a2 2 0 0 0 2 2h4m6 0h4a2 2 0 0 0 2-2v-4m0-6V5a2 2 0 0 0-2-2h-4"></path>
+                        <circle cx="12" cy="10" r="3"></circle>
+                        <path d="M7 21v-1a4 4 0 0 1 4-4h2a4 4 0 0 1 4 4v1"></path>
+                    </svg>
+                    <span>Smart Face Attendance</span>
+                    <span class="fa-badge-pill fa-badge-live">
+                        <span class="fa-pulse-dot"></span> Live Scan
+                    </span>
+                </div>
+                <div class="fa-header-rule">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                    <span>Auto-marks <strong>IN</strong> on 1st scan &bull; <strong>OUT</strong> on 2nd scan &bull; Max 1 IN / 1 OUT per day</span>
+                </div>
             </div>
-            <div class="col-md-5">
-              <div class="form-group">
-                <label for="fa-employee">Employee ID (HR enrollment only)</label>
-                <input class="form-control" id="fa-employee" placeholder="e.g. HR-EMP-0001" autocomplete="off">
-                <p class="text-muted small">Enrollment/re-enrollment is restricted to HR Manager and System Manager.</p>
-                <button class="btn btn-default" id="fa-enroll" disabled>Enroll Face</button>
-              </div>
-              <hr>
-              <div id="fa-status" class="alert alert-secondary">Start the camera to begin.</div>
-              <div id="fa-match" style="display:none">
-                <h4>Identified employee</h4>
-                <p><strong id="fa-match-name"></strong></p>
-                <p>Similarity: <span id="fa-score"></span></p>
-                <p class="text-muted small">Verify the displayed identity before confirming attendance.</p>
-                <button class="btn btn-success" id="fa-in">Confirm IN</button>
-                <button class="btn btn-warning" id="fa-out">Confirm OUT</button>
-              </div>
+
+            <div class="fa-grid-layout">
+                <div class="fa-card fa-camera-card">
+                    <div class="fa-camera-viewport">
+                        <video id="fa-video" autoplay playsinline muted></video>
+                        <div class="fa-camera-hud">
+                            <div class="fa-scan-target" id="fa-scan-target"></div>
+                            <div class="fa-hud-badge" id="fa-scan-indicator">
+                                <span class="fa-pulse-dot"></span> Auto-Detecting Face
+                            </div>
+                        </div>
+                        <div class="fa-camera-stopped-overlay" id="fa-stopped-overlay" style="display:none;">
+                            <div class="fa-stopped-icon">
+                                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <rect x="6" y="4" width="4" height="16"></rect>
+                                    <rect x="14" y="4" width="4" height="16"></rect>
+                                </svg>
+                            </div>
+                            <div class="fa-stopped-msg">Camera Paused</div>
+                            <div class="fa-stopped-sub">Click "Start Camera" to scan next employee</div>
+                        </div>
+                    </div>
+                    <canvas id="fa-canvas" style="display:none"></canvas>
+
+                    <div id="fa-status" class="fa-status-banner fa-status-info">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+                        <span id="fa-status-text">Click "Start Camera" to begin scanning</span>
+                    </div>
+
+                    <div class="mt-3">
+                        <button class="fa-btn-action" id="fa-start">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                                <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                            </svg>
+                            <span>Start Camera</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="d-flex flex-column" style="gap:20px;">
+                    <div class="fa-card" id="fa-match" style="display:none;">
+                        <div class="fa-result-hero">
+                            <div class="fa-avatar-circle" id="fa-avatar">?</div>
+                            <div class="fa-employee-title" id="fa-match-name">--</div>
+                            <div class="fa-employee-subtitle" id="fa-match-id">--</div>
+                            <div class="fa-metric-tag">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+                                <span>Similarity Match: <strong id="fa-score">0.00</strong></span>
+                            </div>
+                            <div id="fa-attendance-badge"></div>
+                        </div>
+                    </div>
+
+                    <div class="fa-card text-center" id="fa-idle-card" style="padding:36px 20px;">
+                        <div style="opacity: 0.35; margin-bottom: 12px;">
+                            <svg width="54" height="54" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                <circle cx="12" cy="8" r="5"></circle>
+                                <path d="M20 21a8 8 0 1 0-16 0"></path>
+                            </svg>
+                        </div>
+                        <h4 style="font-weight:600; color:#475569; margin-bottom:6px;">Waiting for Employee</h4>
+                        <p class="text-muted small" style="margin:0;">Look into the camera frame. Identification and attendance logging is automatic.</p>
+                    </div>
+
+                    <div class="fa-enroll-box">
+                        <div class="fa-section-header">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="8.5" cy="7.5" r="4"></circle><line x1="20" y1="8" x2="20" y2="14"></line><line x1="23" y1="11" x2="17" y2="11"></line></svg>
+                            <span>Enroll New Face Profile</span>
+                        </div>
+                        <div class="form-group mb-2">
+                            <div id="fa-employee-container"></div>
+                        </div>
+                        <div class="d-flex align-items-center justify-content-between mt-3">
+                            <span class="text-muted small">Restricted to HR / System Managers</span>
+                            <button class="fa-btn-primary" id="fa-enroll" disabled>
+                                Enroll Face
+                            </button>
+                        </div>
+                    </div>
+                </div>
             </div>
-          </div>
         </div>
-    `);
+    `;
+
+    page.main.html(template_html);
 
     const video = page.main.find("#fa-video")[0];
     const canvas = page.main.find("#fa-canvas")[0];
     const startBtn = page.main.find("#fa-start");
-    const identifyBtn = page.main.find("#fa-identify");
     const enrollBtn = page.main.find("#fa-enroll");
-    const status = page.main.find("#fa-status");
+    const statusBox = page.main.find("#fa-status");
+    const statusText = page.main.find("#fa-status-text");
     const matchBox = page.main.find("#fa-match");
-    const employeeInput = page.main.find("#fa-employee");
-    let stream = null;
-    let confirmationToken = null;
-    let busy = false;
+    const idleCard = page.main.find("#fa-idle-card");
+    const scanIndicator = page.main.find("#fa-scan-indicator");
+    const scanTarget = page.main.find("#fa-scan-target");
+    const stoppedOverlay = page.main.find("#fa-stopped-overlay");
 
-    function setStatus(message, kind = "secondary") {
-        status.removeClass("alert-secondary alert-info alert-success alert-warning alert-danger")
-              .addClass("alert-" + kind).text(message);
+    let stream = null;
+    let busy = false;
+    let autoScanTimer = null;
+    let lastIdentifiedEmployee = null;
+    let lastIdentifiedTime = 0;
+
+    const employeeControl = frappe.ui.form.make_control({
+        parent: page.main.find("#fa-employee-container"),
+        df: {
+            fieldtype: "Link",
+            fieldname: "employee",
+            options: "Employee",
+            placeholder: "Search & Select Employee...",
+            only_input: true,
+            change: function () {
+                updateLinkIconsVisibility();
+            },
+            get_query: function () {
+                return {
+                    filters: {
+                        status: "Active"
+                    }
+                };
+            }
+        },
+        render_input: true
+    });
+    employeeControl.refresh();
+
+    function updateLinkIconsVisibility() {
+        const hasVal = !!(employeeControl.get_value() || "").trim();
+        page.main.find("#fa-employee-container").toggleClass("has-value", hasVal);
+    }
+
+    employeeControl.$input && employeeControl.$input.on("input change blur", updateLinkIconsVisibility);
+    setTimeout(updateLinkIconsVisibility, 200);
+
+    function setStatus(message, kind = "info") {
+        statusBox.removeClass("fa-status-info fa-status-success fa-status-warning fa-status-danger")
+                 .addClass("fa-status-" + kind);
+        statusText.text(message);
     }
 
     function captureDataUrl() {
         if (!video.videoWidth || !video.videoHeight) {
-            throw new Error("Camera is not ready. Wait for the live video, then try again.");
+            throw new Error("Camera is not ready. Wait for live video feed.");
         }
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
@@ -72,104 +178,189 @@ frappe.pages["face-attendance"].on_page_load = function (wrapper) {
 
     function setBusy(value) {
         busy = value;
-        identifyBtn.prop("disabled", value || !stream);
         enrollBtn.prop("disabled", value || !stream);
-        page.main.find("#fa-in, #fa-out").prop("disabled", value || !confirmationToken);
+        if (value) {
+            scanTarget.addClass("active");
+        } else {
+            scanTarget.removeClass("active");
+        }
     }
 
-    startBtn.on("click", async () => {
+    function startAutoScan() {
+        stopAutoScan();
+        if (!stream) {
+            scanIndicator.hide();
+            return;
+        }
+        scanIndicator.show();
+        autoScanTimer = setInterval(async () => {
+            if (busy || !stream) return;
+            await performIdentification();
+        }, 2200);
+    }
+
+    function stopAutoScan() {
+        if (autoScanTimer) {
+            clearInterval(autoScanTimer);
+            autoScanTimer = null;
+        }
+        scanIndicator.hide();
+    }
+
+    function stopCamera(message = "Camera stopped. Click 'Start Camera' for the next employee.") {
+        stopAutoScan();
+        if (stream) {
+            stream.getTracks().forEach(track => track.stop());
+            stream = null;
+        }
+        video.srcObject = null;
+        stoppedOverlay.show();
+        startBtn.show();
+        enrollBtn.prop("disabled", true);
+        setStatus(message, "warning");
+    }
+
+    async function initCamera() {
         try {
             if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
                 throw new Error("Camera API unavailable. Use HTTPS or localhost in a supported browser.");
             }
+            stoppedOverlay.hide();
             stream = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: "user" }, audio: false
+                video: {
+                    facingMode: "user",
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 }
+                },
+                audio: false
             });
             video.srcObject = stream;
             await video.play();
-            identifyBtn.prop("disabled", false);
             enrollBtn.prop("disabled", false);
-            setStatus("Camera started. Center one employee's face in the frame.", "success");
+            startBtn.hide();
+            setStatus("Camera active & scanning. Stand in front to record attendance.", "success");
+            startAutoScan();
         } catch (e) {
-            setStatus(e.message || "Unable to access camera.", "danger");
+            startBtn.show();
+            stoppedOverlay.show();
+            setStatus(e.message || "Unable to access camera. Check permissions or click Start Camera.", "danger");
         }
-    });
+    }
 
-    identifyBtn.on("click", async () => {
+    startBtn.on("click", initCamera);
+
+    async function performIdentification() {
         if (busy) return;
         try {
             setBusy(true);
-            matchBox.hide();
-            confirmationToken = null;
-            setStatus("Checking face…", "info");
             const image_data = captureDataUrl();
             const r = await frappe.call({
                 method: "face_attendance.api.identify_employee",
                 args: { image_data }
             });
             const result = r.message;
-            if (!result || !result.employee) throw new Error("No matching employee was returned.");
-            confirmationToken = result.confirmation_token;
-            page.main.find("#fa-match-name").text(result.employee_name + " (" + result.employee + ")");
+            if (!result || !result.employee) {
+                return;
+            }
+
+            const emp = result.employee;
+            const empName = result.employee_name || emp;
+            const now = Date.now();
+
+            if (emp === lastIdentifiedEmployee && (now - lastIdentifiedTime) < 8000) {
+                return;
+            }
+
+            lastIdentifiedEmployee = emp;
+            lastIdentifiedTime = now;
+
+            const initials = empName.split(" ").map(p => p[0]).filter(Boolean).slice(0, 2).join("").toUpperCase() || "E";
+            page.main.find("#fa-avatar").text(initials);
+            page.main.find("#fa-match-name").text(empName);
+            page.main.find("#fa-match-id").text(emp);
             page.main.find("#fa-score").text(Number(result.similarity).toFixed(3));
-            matchBox.show();
-            setStatus("Employee identified. Confirm the correct person before selecting IN or OUT.", "success");
+
+            idleCard.hide();
+            matchBox.fadeIn(250);
+
+            const action = result.auto_action;
+
+            if (action === "ALREADY_COMPLETED") {
+                page.main.find("#fa-attendance-badge").html(
+                    '<div class="fa-action-badge fa-badge-completed">Attendance Completed Today (IN & OUT already logged)</div>'
+                );
+                setStatus(`Attendance already completed today for ${empName}. Camera stopped.`, "warning");
+                frappe.show_alert({
+                    message: __("Attendance already completed today for {0} (IN & OUT marked).", [empName]),
+                    indicator: "blue"
+                }, 4);
+                stopCamera(`Attendance already completed today for ${empName}. Click "Start Camera" for next employee.`);
+                return;
+            }
+
+            if (action === "IN" || action === "OUT") {
+                setStatus(`Auto-recording ${action} entry for ${empName}…`, "info");
+                const confirmRes = await frappe.call({
+                    method: "face_attendance.api.confirm_attendance",
+                    args: {
+                        confirmation_token: result.confirmation_token,
+                        log_type: action
+                    }
+                });
+
+                if (confirmRes.message && confirmRes.message.ok) {
+                    const badgeClass = action === "IN" ? "fa-badge-in" : "fa-badge-out";
+                    page.main.find("#fa-attendance-badge").html(
+                        `<div class="fa-action-badge ${badgeClass}">Marked ${action} Successfully</div>`
+                    );
+                    setStatus(`Successfully recorded ${action} for ${empName}! Camera stopped. Click "Start Camera" for next employee.`, "success");
+                    frappe.show_alert({
+                        message: __("Successfully recorded {0} for {1}", [action, empName]),
+                        indicator: action === "IN" ? "green" : "orange"
+                    }, 5);
+
+                    stopCamera(`Marked ${action} for ${empName}. Click "Start Camera" for next employee.`);
+                }
+            }
         } catch (e) {
-            const msg = e.message || (e.responseJSON && e.responseJSON._server_messages) || "Face identification failed.";
-            setStatus(typeof msg === "string" ? msg : "Face identification failed.", "danger");
+            // Background scan skips silently without error alert
         } finally {
             setBusy(false);
         }
-    });
+    }
 
     enrollBtn.on("click", async () => {
         if (busy) return;
-        const employee = (employeeInput.val() || "").trim();
+        const employee = (employeeControl.get_value() || "").trim();
         if (!employee) {
-            setStatus("Enter an Employee ID before enrollment.", "warning");
+            setStatus("Please select an employee from the dropdown before enrolling.", "warning");
             return;
         }
         try {
             setBusy(true);
-            setStatus("Enrolling face…", "info");
+            setStatus("Enrolling facial profile…", "info");
             const image_data = captureDataUrl();
             await frappe.call({
                 method: "face_attendance.api.enroll_face",
                 args: { employee, image_data }
             });
-            setStatus("Face profile enrolled successfully for " + employee + ". The image itself was not stored.", "success");
+            setStatus(`Face profile successfully enrolled for ${employee}.`, "success");
+            frappe.show_alert({
+                message: __("Face profile enrolled for {0}", [employee]),
+                indicator: "green"
+            }, 5);
         } catch (e) {
-            const msg = e.message || "Enrollment failed. Check your role and the server logs.";
+            const msg = e.message || "Enrollment failed. Ensure single face is centered.";
             setStatus(msg, "danger");
         } finally {
             setBusy(false);
         }
     });
 
-    async function confirm(log_type) {
-        if (!confirmationToken || busy) return;
-        try {
-            setBusy(true);
-            setStatus("Creating Employee Checkin…", "info");
-            const r = await frappe.call({
-                method: "face_attendance.api.confirm_attendance",
-                args: { confirmation_token: confirmationToken, log_type }
-            });
-            confirmationToken = null;
-            matchBox.hide();
-            setStatus((r.message && r.message.message) || ("Employee Checkin created (" + log_type + ")."), "success");
-        } catch (e) {
-            setStatus(e.message || "Could not create Employee Checkin.", "danger");
-        } finally {
-            setBusy(false);
-        }
-    }
+    stopCamera("Camera idle. Click 'Start Camera' to begin.");
 
-    page.main.find("#fa-in").on("click", () => confirm("IN"));
-    page.main.find("#fa-out").on("click", () => confirm("OUT"));
-
-    // Stop camera when the user leaves this Desk page.
     $(wrapper).on("hide", function () {
+        stopAutoScan();
         if (stream) stream.getTracks().forEach(track => track.stop());
     });
 };

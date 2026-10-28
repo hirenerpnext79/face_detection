@@ -182,26 +182,36 @@ def _find_best_match(probe_embedding):
 
 def get_auto_log_type(employee):
     try:
-        latest = frappe.db.get_all(
+        today_date = today()
+        today_logs = frappe.db.get_all(
             "Face Attendance Log",
-            filters={"employee": employee},
+            filters={
+                "employee": employee,
+                "time": [">=", f"{today_date} 00:00:00"]
+            },
             fields=["log_type", "time"],
-            order_by="time desc, creation desc",
-            limit_page_length=1,
+            order_by="time asc, creation asc",
         )
 
-        if not latest and frappe.db.exists("DocType", "Employee Checkin"):
-            latest = frappe.db.get_all(
+        if not today_logs and frappe.db.exists("DocType", "Employee Checkin"):
+            today_logs = frappe.db.get_all(
                 "Employee Checkin",
-                filters={"employee": employee},
+                filters={
+                    "employee": employee,
+                    "time": [">=", f"{today_date} 00:00:00"]
+                },
                 fields=["log_type", "time"],
-                order_by="time desc, creation desc",
-                limit_page_length=1,
+                order_by="time asc, creation asc",
             )
 
-        if latest and latest[0].log_type == "IN":
+        has_in = any(d.log_type == "IN" for d in today_logs)
+        has_out = any(d.log_type == "OUT" for d in today_logs)
+
+        if not has_in:
+            return "IN"
+        if not has_out:
             return "OUT"
-        return "IN"
+        return "ALREADY_COMPLETED"
     except Exception:
         frappe.log_error(frappe.get_traceback(), "Face Attendance: auto log type error")
         return "IN"
@@ -317,12 +327,15 @@ def identify_employee(image_data):
             expires_in_sec=CONFIRMATION_TTL_SECONDS,
         )
 
+        auto_action = get_auto_log_type(matched_employee)
+
         return {
             "employee": matched_employee,
             "employee_name": employee_doc.employee_name or matched_employee,
             "similarity": round(match["similarity"], 4),
             "confirmation_token": token,
             "expires_in_seconds": CONFIRMATION_TTL_SECONDS,
+            "auto_action": auto_action,
         }
     except frappe.ValidationError:
         raise

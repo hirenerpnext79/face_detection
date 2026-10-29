@@ -1,11 +1,11 @@
-frappe.pages["face-attendance"].on_page_load = function (wrapper) {
+frappe.pages["face-detection-kiosk"].on_page_load = function (wrapper) {
     const page = frappe.ui.make_app_page({
         parent: wrapper,
-        title: "Face Attendance",
+        title: "Face Detection",
         single_column: true
     });
 
-    const template_html = frappe.templates["face_attendance"] || `
+    const template_html = frappe.templates["face_detection_kiosk"] || `
         <div class="fa-container">
             <div class="fa-header-bar">
                 <div class="fa-header-title">
@@ -14,7 +14,7 @@ frappe.pages["face-attendance"].on_page_load = function (wrapper) {
                         <circle cx="12" cy="10" r="3"></circle>
                         <path d="M7 21v-1a4 4 0 0 1 4-4h2a4 4 0 0 1 4 4v1"></path>
                     </svg>
-                    <span>Smart Face Attendance</span>
+                    <span>Face Detection</span>
                     <span class="fa-badge-pill fa-badge-live">
                         <span class="fa-pulse-dot"></span> Live Scan
                     </span>
@@ -255,7 +255,7 @@ frappe.pages["face-attendance"].on_page_load = function (wrapper) {
             setBusy(true);
             const image_data = captureDataUrl();
             const r = await frappe.call({
-                method: "face_attendance.api.identify_employee",
+                method: "face_detection.api.identify_employee",
                 args: { image_data }
             });
             const result = r.message;
@@ -301,7 +301,7 @@ frappe.pages["face-attendance"].on_page_load = function (wrapper) {
             if (action === "IN" || action === "OUT") {
                 setStatus(`Auto-recording ${action} entry for ${empName}…`, "info");
                 const confirmRes = await frappe.call({
-                    method: "face_attendance.api.confirm_attendance",
+                    method: "face_detection.api.confirm_attendance",
                     args: {
                         confirmation_token: result.confirmation_token,
                         log_type: action
@@ -341,7 +341,7 @@ frappe.pages["face-attendance"].on_page_load = function (wrapper) {
             setStatus("Enrolling facial profile…", "info");
             const image_data = captureDataUrl();
             await frappe.call({
-                method: "face_attendance.api.enroll_face",
+                method: "face_detection.api.enroll_face",
                 args: { employee, image_data }
             });
             setStatus(`Face profile successfully enrolled for ${employee}.`, "success");

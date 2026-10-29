@@ -3,15 +3,15 @@ requires = ["flit_core >=3.4,<4"]
 build-backend = "flit_core.buildapi"
 
 [project]
-name = "face_attendance"
-authors = [{name = "Face Attendance"}]
+name = "face_detection"
+authors = [{name = "Face Detection"}]
 description = "Face identification and manually confirmed ERPNext employee check-in/out for Frappe v15"
 requires-python = ">=3.10"
 readme = "README.md"
 dynamic = ["version"]
 
 [tool.flit.module]
-name = "face_attendance"
+name = "face_detection"
 
 [tool.bench.frappe-dependencies]
 frappe = ">=15.0.0,<16.0.0"

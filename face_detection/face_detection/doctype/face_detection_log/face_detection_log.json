@@ -10,19 +10,16 @@
   "log_type",
   "time",
   "column_break_main",
-  "similarity_score",
-  "device_id",
-  "longitude",
-  "latitude"
+  "similarity_score"
  ],
  "fields": [
   {
-   "default": "FAL-.YYYY.-.#####",
+   "default": "FDL-.YYYY.-.#####",
    "fieldname": "naming_series",
    "fieldtype": "Select",
    "hidden": 1,
    "label": "Series",
-   "options": "FAL-.YYYY.-.#####",
+   "options": "FDL-.YYYY.-.#####",
    "reqd": 1
   },
   {
@@ -65,33 +62,13 @@
    "label": "Similarity Score",
    "precision": "4",
    "read_only": 1
-  },
-  {
-   "fieldname": "device_id",
-   "fieldtype": "Data",
-   "label": "Device ID",
-   "read_only": 1
-  },
-  {
-   "fieldname": "latitude",
-   "fieldtype": "Float",
-   "label": "Latitude",
-   "precision": "6",
-   "read_only": 1
-  },
-  {
-   "fieldname": "longitude",
-   "fieldtype": "Float",
-   "label": "Longitude",
-   "precision": "6",
-   "read_only": 1
   }
  ],
  "links": [],
- "modified": "2026-10-28 14:35:11.956024",
+ "modified": "2026-10-29 10:50:00.000000",
  "modified_by": "Administrator",
- "module": "Face Attendance",
- "name": "Face Attendance Log",
+ "module": "Face Detection",
+ "name": "Face Detection Log",
  "naming_rule": "By \"Naming Series\" field",
  "owner": "Administrator",
  "permissions": [

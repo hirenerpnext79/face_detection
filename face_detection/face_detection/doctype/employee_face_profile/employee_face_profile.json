@@ -1,17 +1,16 @@
 {
  "actions": [],
  "autoname": "field:employee",
- "creation": "2026-10-26 06:00:00",
+ "creation": "2026-10-29 11:06:28.457594",
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
   "employee",
   "employee_name",
-  "image",
+  "enrolled_by",
   "column_break_main",
   "active",
   "is_enrolled",
-  "enrolled_by",
   "enrolled_on",
   "face_embedding_section",
   "embedding"
@@ -33,11 +32,6 @@
    "in_list_view": 1,
    "label": "Employee Name",
    "read_only": 1
-  },
-  {
-   "fieldname": "image",
-   "fieldtype": "Attach Image",
-   "label": "Face Image"
   },
   {
    "fieldname": "column_break_main",
@@ -84,9 +78,9 @@
   }
  ],
  "links": [],
- "modified": "2026-10-28 14:44:20.296998",
+ "modified": "2026-10-29 11:13:11.222991",
  "modified_by": "Administrator",
- "module": "Face Attendance",
+ "module": "Face Detection",
  "name": "Employee Face Profile",
  "naming_rule": "By fieldname",
  "owner": "Administrator",

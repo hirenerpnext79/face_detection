@@ -1,0 +1,50 @@
+{
+ "charts": [],
+ "content": "[{\"id\":\"gcphmRe9YU\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Face Detection</b></span>\",\"col\":12}},{\"id\":\"sc1\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Live Face Scanner\",\"col\":4}},{\"id\":\"sc2\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Employee Face Profile\",\"col\":4}},{\"id\":\"sc3\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Face Detection Log\",\"col\":4}}]",
+ "creation": "2026-10-28 14:30:41.862192",
+ "custom_blocks": [],
+ "docstatus": 0,
+ "doctype": "Workspace",
+ "for_user": "",
+ "hide_custom": 0,
+ "idx": 0,
+ "indicator_color": "green",
+ "is_hidden": 0,
+ "label": "Face Detection",
+ "links": [],
+ "modified": "2026-10-29 11:21:16.838832",
+ "modified_by": "Administrator",
+ "module": "Face Detection",
+ "name": "Face Detection",
+ "number_cards": [],
+ "owner": "Administrator",
+ "parent_page": "",
+ "public": 1,
+ "quick_lists": [],
+ "roles": [],
+ "sequence_id": 56.0,
+ "shortcuts": [
+  {
+   "color": "Green",
+   "doc_view": "",
+   "label": "Live Face Scanner",
+   "link_to": "face-detection-kiosk",
+   "type": "Page"
+  },
+  {
+   "color": "Blue",
+   "doc_view": "",
+   "label": "Employee Face Profile",
+   "link_to": "Employee Face Profile",
+   "type": "DocType"
+  },
+  {
+   "color": "Orange",
+   "doc_view": "",
+   "label": "Face Detection Log",
+   "link_to": "Face Detection Log",
+   "type": "DocType"
+  }
+ ],
+ "title": "Face Detection"
+}

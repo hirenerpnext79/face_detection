@@ -34,7 +34,7 @@ function capture_face_dialog(frm) {
             const image_data = canvas_element.toDataURL("image/jpeg", 0.9);
 
             frappe.call({
-                method: "face_attendance.api.enroll_face",
+                method: "face_detection.api.enroll_face",
                 args: {
                     employee: frm.doc.employee,
                     image_data: image_data

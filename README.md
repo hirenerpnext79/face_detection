@@ -1,14 +1,14 @@
-# Face Attendance for ERPNext / Frappe v15
+# Face Detection for ERPNext / Frappe v15
 
 AI-powered facial recognition attendance system for ERPNext and Mobile Applications using InsightFace and OpenCV.
 
 ## Purpose
 
 1. **Face Profile Enrollment**: Enroll employee face vectors either via web camera capture, mobile camera photo, or direct photo attachment in `Employee Face Profile`.
-2. **Desk Face Attendance**: Web kiosk page (`/app/face-attendance`) for camera-based employee identification and IN/OUT check-in.
+2. **Desk Face Detection**: Dedicated Workspace (`/app/face-detection`) and live camera kiosk page (`/app/face-detection-kiosk`) for real-time employee identification and IN/OUT check-in.
 3. **Mobile App Integration**: Dedicated REST APIs allowing mobile applications to capture face photos, perform 1:1 or 1:N face detection, and automatically record attendance check-in and check-out logs.
 4. **Attendance Storage**:
-   - Stores full history in `Face Attendance Log` (includes Employee, Time, Log Type, Similarity Score, Device ID, Latitude, Longitude).
+   - Stores full history in `Face Detection Log` (includes Employee, Time, Log Type, Similarity Score).
    - If ERPNext `Employee Checkin` exists (e.g. from HRMS), also writes to `Employee Checkin` for auto-attendance and shift processing.
 
 ---
@@ -20,23 +20,21 @@ In the initial version, the `embedding` field in `Employee Face Profile` was set
 
 ### Solution Applied
 1. `embedding` field set to `reqd: 0` in DocType schema.
-2. Added `image` field (`Attach Image`) on `Employee Face Profile`.
+2. Added **Capture Face** live camera dialog directly on the `Employee Face Profile` form in Desk.
 3. In `EmployeeFaceProfile.validate()`:
-   - If `image` is attached, InsightFace automatically extracts the face embedding vector.
-   - If no image is attached on the profile, it automatically checks if the employee has a photo in `Employee.image` and extracts the embedding.
-   - If neither is provided, a clear prompt instructs the user to attach a photo or use the camera.
-4. Added **Capture Face** camera dialog directly on the `Employee Face Profile` form in Desk.
+   - If no face embedding is present, it automatically checks if the employee has a photo in `Employee.image` and extracts the embedding.
+   - If no image is available, a prompt instructs the user to capture the employee's photo using the camera.
 
 ---
 
 ## Mobile App API Endpoints
 
-All endpoints are whitelisted under `face_attendance.api.*`.
+All endpoints are whitelisted under `face_detection.api.*`.
 
 ### 1. Mobile Face Check-in / Check-out
 Single-step facial recognition and check-in / check-out log storage.
 
-- **Endpoint**: `/api/method/face_attendance.api.mobile_face_checkin`
+- **Endpoint**: `/api/method/face_detection.api.mobile_face_checkin`
 - **Method**: `POST`
 - **Headers**:
   - `Content-Type: application/json`
@@ -85,7 +83,7 @@ Single-step facial recognition and check-in / check-out log storage.
 ### 2. Mobile Face Verification / Detection Preview
 Detects face and verifies identity without writing an attendance log.
 
-- **Endpoint**: `/api/method/face_attendance.api.mobile_detect_and_verify`
+- **Endpoint**: `/api/method/face_detection.api.mobile_detect_and_verify`
 - **Method**: `POST`
 - **Parameters**:
   - `image_data`: Base64 string / Data URL
@@ -108,7 +106,7 @@ Detects face and verifies identity without writing an attendance log.
 ### 3. Mobile Face Profile Enrollment
 Enrolls or replaces an employee's face vector directly from mobile camera.
 
-- **Endpoint**: `/api/method/face_attendance.api.mobile_enroll_face`
+- **Endpoint**: `/api/method/face_detection.api.mobile_enroll_face`
 - **Method**: `POST`
 - **Parameters**:
   - `employee`: Employee ID
@@ -131,7 +129,7 @@ Enrolls or replaces an employee's face vector directly from mobile camera.
 ### 4. Today's Attendance & Next Action
 Fetches the employee's check-in / check-out history for today and the next expected action.
 
-- **Endpoint**: `/api/method/face_attendance.api.get_today_attendance`
+- **Endpoint**: `/api/method/face_detection.api.get_today_attendance`
 - **Method**: `POST`
 - **Parameters**:
   - `employee`: Optional Employee ID (defaults to session user's employee)
@@ -147,8 +145,7 @@ Fetches the employee's check-in / check-out history for today and the next expec
         "employee_name": "Hiren Savaliya",
         "log_type": "IN",
         "time": "2026-10-28 10:21:48.230735",
-        "similarity_score": 0.88,
-        "device_id": "Mobile-Simulator"
+        "similarity_score": 0.88
       }
     ],
     "next_action": "OUT",
@@ -162,7 +159,7 @@ Fetches the employee's check-in / check-out history for today and the next expec
 ### 5. Profile Status Check
 Checks if an employee has an active enrolled face embedding.
 
-- **Endpoint**: `/api/method/face_attendance.api.get_face_profile_status`
+- **Endpoint**: `/api/method/face_detection.api.get_face_profile_status`
 - **Method**: `POST`
 - **Parameters**:
   - `employee`: Employee ID
@@ -176,4 +173,25 @@ Checks if an employee has an active enrolled face embedding.
     "enrolled_on": "2026-10-28 10:20:00"
   }
 }
+```
+
+---
+
+## Flutter Mobile Application (`face_detection_mobile`)
+
+A cross-platform Flutter mobile application is located in `face_detection_mobile/`.
+
+### Features
+1. **Live Camera Face Scanner**: Biometric oval viewfinder with front/rear camera toggle and auto-scan mode.
+2. **Real-time Checkin**: Captures face frame, converts to base64, and calls `/api/method/face_detection.api.mobile_face_checkin`.
+3. **Smart Response Handling**:
+   - **Success**: Displays employee name, badge (IN/OUT), and similarity percentage.
+   - **Already Completed**: Informs user if both IN and OUT entries are already logged today.
+   - **Error Feedback**: Provides specific failure reasons (no face detected, unverified face, or connection timeout).
+4. **Settings & History**: Configurable ERPNext base URL and API credentials with connection tester, plus today's attendance log viewer.
+
+### Running the Mobile App
+```bash
+cd face_detection_mobile
+flutter run
 ```

@@ -2,7 +2,7 @@ import frappe
 from frappe.model.document import Document
 
 
-class FaceAttendanceLog(Document):
+class FaceDetectionLog(Document):
     def validate(self):
         try:
             if not self.employee:
@@ -16,5 +16,5 @@ class FaceAttendanceLog(Document):
             if not self.time:
                 self.time = frappe.utils.now_datetime()
         except Exception:
-            frappe.log_error(frappe.get_traceback(), "Face Attendance: validate log error")
+            frappe.log_error(frappe.get_traceback(), "Face Detection: validate log error")
             raise

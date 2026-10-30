@@ -11,7 +11,7 @@
     grid-template-columns: 1fr 1fr 1fr;
     gap: 16px;
     width: 100%;
-    align-items: start;
+    align-items: stretch;
 }
 @media (max-width: 1080px) {
     .fa-grid-layout {
@@ -22,6 +22,7 @@
     display: flex;
     flex-direction: column;
     gap: 10px;
+    height: 100%;
 }
 .fa-panel-header {
     display: flex;
@@ -32,6 +33,9 @@
     border-radius: 10px;
     border: 1px solid #e2e8f0;
     box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+    min-height: 42px;
+    box-sizing: border-box;
+    flex-shrink: 0;
 }
 [data-theme="dark"] .fa-panel-header {
     background: #1e293b;
@@ -97,36 +101,25 @@
     display: inline-flex;
     align-items: center;
 }
-.fa-rule-strip {
-    display: flex;
-    align-items: flex-start;
-    gap: 6px;
-    padding: 8px 12px;
-    background: #f8fafc;
-    border-radius: 8px;
-    border: 1px solid #cbd5e1;
-    font-size: 12px;
-    line-height: 1.4;
-    color: #111827;
-}
-.fa-rule-strip span, .fa-rule-strip strong {
-    color: #111827;
-}
-[data-theme="dark"] .fa-rule-strip {
-    background: #0f172a;
-    border-color: #334155;
-    color: #cbd5e1;
-}
-[data-theme="dark"] .fa-rule-strip span, [data-theme="dark"] .fa-rule-strip strong {
-    color: #cbd5e1;
-}
 
 .fa-card {
     background: #ffffff;
     border-radius: 12px;
     border: 1px solid #e2e8f0;
     box-shadow: 0 3px 5px -1px rgba(0, 0, 0, 0.03);
-    padding: 12px;
+    padding: 14px;
+    box-sizing: border-box;
+}
+.fa-panel > .fa-card,
+.fa-card.fa-result-card,
+.fa-card.fa-idle-card,
+.fa-card.fa-camera-card,
+.fa-card.fa-enroll-card {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 350px;
 }
 .fa-camera-card, .fa-result-card, .fa-idle-card {
     overflow: hidden;
@@ -135,10 +128,15 @@
     background: #1e293b;
     border-color: #334155;
 }
+.fa-card-footer {
+    margin-top: auto;
+    padding-top: 10px;
+}
+
 .fa-camera-viewport {
     position: relative;
     width: 100%;
-    height: 230px;
+    height: 220px;
     background: #090d16;
     border-radius: 10px;
     overflow: hidden;
@@ -146,6 +144,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    flex-shrink: 0;
 }
 #fa-video {
     width: 100%;
@@ -236,29 +235,42 @@
     background: #0369a1;
 }
 
+.fa-info-panel .fa-card {
+    justify-content: center;
+    align-items: center;
+}
+.fa-result-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+}
 .fa-result-hero {
-    padding: 10px;
+    width: 100%;
+    padding: 14px 10px;
     border-radius: 8px;
     background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
     border: 1px solid #e2e8f0;
     text-align: center;
+    box-sizing: border-box;
 }
 [data-theme="dark"] .fa-result-hero {
     background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
     border-color: #334155;
 }
 .fa-avatar-circle {
-    width: 44px;
-    height: 44px;
+    width: 48px;
+    height: 48px;
     border-radius: 50%;
     background: #3b82f6;
     color: #ffffff;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 16px;
+    font-size: 18px;
     font-weight: 700;
-    margin: 0 auto 4px;
+    margin: 0 auto 6px;
     box-shadow: 0 2px 6px rgba(59, 130, 246, 0.3);
 }
 .fa-employee-title {
@@ -307,7 +319,13 @@
 .fa-badge-completed { background: #0284c7; color: #ffffff; }
 
 .fa-idle-card {
-    padding: 20px 12px !important;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    height: 100%;
+    padding: 24px 16px !important;
 }
 .fa-idle-card h4 {
     color: #111827 !important;
@@ -316,8 +334,11 @@
     color: #374151 !important;
 }
 
-/* Part 3: Enrollment Panel */
+/* Enrollment Panel */
 .fa-enroll-card {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
     padding: 14px;
 }
 .fa-enroll-instruction {

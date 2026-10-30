@@ -1,6 +1,5 @@
 <div class="fa-kiosk-container">
     <div class="fa-grid-layout">
-        <!-- Part 1: Rules & Live Attendance Info (Left Column) -->
         <div class="fa-panel fa-info-panel">
             <div class="fa-panel-header">
                 <div class="fa-panel-title">
@@ -18,7 +17,6 @@
                 </span>
             </div>
 
-            <!-- Identified Employee Card (Dynamic) -->
             <div class="fa-card fa-result-card" id="fa-match" style="display:none;">
                 <div class="fa-result-hero">
                     <div class="fa-avatar-circle" id="fa-avatar">?</div>
@@ -32,7 +30,6 @@
                 </div>
             </div>
 
-            <!-- Idle State Card -->
             <div class="fa-card text-center fa-idle-card" id="fa-idle-card">
                 <div style="opacity: 0.35; margin-bottom: 6px;">
                     <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -43,14 +40,8 @@
                 <h4 style="font-weight:600; color:#475569; margin-bottom:4px; font-size:14px;">Waiting for Employee</h4>
                 <p class="text-muted small" style="margin:0;">Attendance log and employee details will appear here upon scanning.</p>
             </div>
-
-            <div class="fa-rule-strip">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-                <span><strong>Policy:</strong> 1st Scan auto-marks <strong>IN</strong>, 2nd Scan auto-marks <strong>OUT</strong>. Maximum 1 IN / 1 OUT allowed per employee per day.</span>
-            </div>
         </div>
 
-        <!-- Part 2: Centered Camera Viewport (Center Column) -->
         <div class="fa-panel fa-camera-panel">
             <div class="fa-panel-header">
                 <div class="fa-panel-title">
@@ -87,7 +78,7 @@
                     <span id="fa-status-text">Click "Start Camera" to begin scanning</span>
                 </div>
 
-                <div class="mt-2">
+                <div class="fa-card-footer mt-auto">
                     <button class="fa-btn-action" id="fa-start">
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
                             <polygon points="5 3 19 12 5 21 5 3"></polygon>
@@ -98,7 +89,6 @@
             </div>
         </div>
 
-        <!-- Part 3: HR Face Profile Enrollment (Right Column) -->
         <div class="fa-panel fa-enrollment-panel">
             <div class="fa-panel-header">
                 <div class="fa-panel-title">
@@ -124,7 +114,7 @@
                     <div id="fa-employee-container"></div>
                 </div>
 
-                <div class="mt-3">
+                <div class="fa-card-footer mt-auto">
                     <button class="fa-btn-action fa-btn-enroll" id="fa-enroll" disabled>
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="8.5" cy="7.5" r="4"></circle><polyline points="17 11 19 13 23 9"></polyline></svg>
                         <span>Capture & Enroll Face</span>
@@ -134,4 +124,3 @@
         </div>
     </div>
 </div>
-

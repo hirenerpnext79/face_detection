@@ -16,14 +16,15 @@ AI-powered facial recognition attendance system for ERPNext and Mobile Applicati
 ## Resolution: "Face Embedding is required" Validation Error
 
 ### Cause
-In the initial version, the `embedding` field in `Employee Face Profile` was set to `reqd: 1` and `hidden: 1`. When creating or editing an Employee Face Profile from Desk, users were blocked by the mandatory validation error because the embedding vector could not be entered manually.
+Previously, `EmployeeFaceProfile.validate()` threw an unhandled validation error (`Face Embedding is required. Please capture a photo using the camera.`) whenever an Employee Face Profile was saved without an existing face embedding or employee image. This prevented users from creating or saving Employee Face Profile records from Desk.
 
 ### Solution Applied
-1. `embedding` field set to `reqd: 0` in DocType schema.
-2. Added **Capture Face** live camera dialog directly on the `Employee Face Profile` form in Desk.
+1. Allowed saving `Employee Face Profile` without an embedding: if no embedding is present, the profile is saved with `is_enrolled = 0` and a non-blocking alert is displayed.
+2. When an embedding is present or captured, `is_enrolled = 1` is automatically marked.
 3. In `EmployeeFaceProfile.validate()`:
-   - If no face embedding is present, it automatically checks if the employee has a photo in `Employee.image` and extracts the embedding.
-   - If no image is available, a prompt instructs the user to capture the employee's photo using the camera.
+   - Safely checks for `Employee.image` to auto-extract the face embedding with error handling if face extraction fails.
+   - Sets `is_enrolled = 0` if not yet captured, without throwing an error, so the document can always be saved.
+4. Added **Capture Face** button directly on the form header for easy enrollment via live camera or direct photo upload fallback.
 
 ---
 

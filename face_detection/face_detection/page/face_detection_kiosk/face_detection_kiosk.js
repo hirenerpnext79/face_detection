@@ -5,108 +5,131 @@ frappe.pages["face-detection-kiosk"].on_page_load = function (wrapper) {
         single_column: true
     });
 
-    const template_html = frappe.templates["face_detection_kiosk"] || `
-        <div class="fa-container">
-            <div class="fa-header-bar">
-                <div class="fa-header-title">
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M9 3H5a2 2 0 0 0-2 2v4m0 6v4a2 2 0 0 0 2 2h4m6 0h4a2 2 0 0 0 2-2v-4m0-6V5a2 2 0 0 0-2-2h-4"></path>
-                        <circle cx="12" cy="10" r="3"></circle>
-                        <path d="M7 21v-1a4 4 0 0 1 4-4h2a4 4 0 0 1 4 4v1"></path>
-                    </svg>
-                    <span>Face Detection</span>
-                    <span class="fa-badge-pill fa-badge-live">
-                        <span class="fa-pulse-dot"></span> Live Scan
-                    </span>
-                </div>
-                <div class="fa-header-rule">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-                    <span>Auto-marks <strong>IN</strong> on 1st scan &bull; <strong>OUT</strong> on 2nd scan &bull; Max 1 IN / 1 OUT per day</span>
-                </div>
-            </div>
-
-            <div class="fa-grid-layout">
-                <div class="fa-card fa-camera-card">
-                    <div class="fa-camera-viewport">
-                        <video id="fa-video" autoplay playsinline muted></video>
-                        <div class="fa-camera-hud">
-                            <div class="fa-scan-target" id="fa-scan-target"></div>
-                            <div class="fa-hud-badge" id="fa-scan-indicator">
-                                <span class="fa-pulse-dot"></span> Auto-Detecting Face
+    let template_html = "";
+    if (typeof frappe.templates["face_detection_kiosk"] === "function") {
+        template_html = frappe.render_template("face_detection_kiosk", {});
+    } else if (typeof frappe.templates["face_detection_kiosk"] === "string") {
+        template_html = frappe.templates["face_detection_kiosk"];
+    } else {
+        template_html = `
+            <div class="fa-kiosk-container">
+                <div class="fa-grid-layout">
+                    <div class="fa-panel fa-info-panel">
+                        <div class="fa-panel-header">
+                            <div class="fa-panel-title">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                                    <polyline points="14 2 14 8 20 8"></polyline>
+                                    <line x1="16" y1="13" x2="8" y2="13"></line>
+                                    <line x1="16" y1="17" x2="8" y2="17"></line>
+                                    <polyline points="10 9 9 9 8 9"></polyline>
+                                </svg>
+                                <span>Attendance Status</span>
+                            </div>
+                            <span class="fa-badge-pill fa-badge-live">
+                                <span class="fa-pulse-dot"></span> Live
+                            </span>
+                        </div>
+                        <div class="fa-card fa-result-card" id="fa-match" style="display:none;">
+                            <div class="fa-result-hero">
+                                <div class="fa-avatar-circle" id="fa-avatar">?</div>
+                                <div class="fa-employee-title" id="fa-match-name">--</div>
+                                <div class="fa-employee-subtitle" id="fa-match-id">--</div>
+                                <div class="fa-metric-tag">
+                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+                                    <span>Similarity: <strong id="fa-score">0.00</strong></span>
+                                </div>
+                                <div id="fa-attendance-badge"></div>
                             </div>
                         </div>
-                        <div class="fa-camera-stopped-overlay" id="fa-stopped-overlay" style="display:none;">
-                            <div class="fa-stopped-icon">
-                                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <rect x="6" y="4" width="4" height="16"></rect>
-                                    <rect x="14" y="4" width="4" height="16"></rect>
+                        <div class="fa-card text-center fa-idle-card" id="fa-idle-card">
+                            <div style="opacity: 0.35; margin-bottom: 6px;">
+                                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                    <circle cx="12" cy="8" r="5"></circle>
+                                    <path d="M20 21a8 8 0 1 0-16 0"></path>
                                 </svg>
                             </div>
-                            <div class="fa-stopped-msg">Camera Paused</div>
-                            <div class="fa-stopped-sub">Click "Start Camera" to scan next employee</div>
+                            <h4 style="font-weight:600; color:#475569; margin-bottom:4px; font-size:14px;">Waiting for Employee</h4>
+                            <p class="text-muted small" style="margin:0;">Attendance log and employee details will appear here upon scanning.</p>
                         </div>
                     </div>
-                    <canvas id="fa-canvas" style="display:none"></canvas>
-
-                    <div id="fa-status" class="fa-status-banner fa-status-info">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
-                        <span id="fa-status-text">Click "Start Camera" to begin scanning</span>
-                    </div>
-
-                    <div class="mt-3">
-                        <button class="fa-btn-action" id="fa-start">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                                <polygon points="5 3 19 12 5 21 5 3"></polygon>
-                            </svg>
-                            <span>Start Camera</span>
-                        </button>
-                    </div>
-                </div>
-
-                <div class="d-flex flex-column" style="gap:20px;">
-                    <div class="fa-card" id="fa-match" style="display:none;">
-                        <div class="fa-result-hero">
-                            <div class="fa-avatar-circle" id="fa-avatar">?</div>
-                            <div class="fa-employee-title" id="fa-match-name">--</div>
-                            <div class="fa-employee-subtitle" id="fa-match-id">--</div>
-                            <div class="fa-metric-tag">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
-                                <span>Similarity Match: <strong id="fa-score">0.00</strong></span>
+                    <div class="fa-panel fa-camera-panel">
+                        <div class="fa-panel-header">
+                            <div class="fa-panel-title">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                                    <circle cx="12" cy="13" r="4"></circle>
+                                </svg>
+                                <span>Camera Scanner</span>
                             </div>
-                            <div id="fa-attendance-badge"></div>
+                            <div class="fa-hud-badge" id="fa-scan-indicator">
+                                <span class="fa-pulse-dot"></span> Auto-Detecting
+                            </div>
+                        </div>
+                        <div class="fa-card fa-camera-card">
+                            <div class="fa-camera-viewport">
+                                <video id="fa-video" autoplay playsinline muted></video>
+                                <div class="fa-camera-hud"></div>
+                                <div class="fa-camera-stopped-overlay" id="fa-stopped-overlay">
+                                    <div class="fa-stopped-icon">
+                                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <circle cx="12" cy="12" r="10"></circle>
+                                            <polygon points="10 8 16 12 10 16 10 8" fill="currentColor"></polygon>
+                                        </svg>
+                                    </div>
+                                    <div class="fa-stopped-msg">Camera Idle</div>
+                                    <div class="fa-stopped-sub">Click "Start Camera" to scan employee</div>
+                                </div>
+                            </div>
+                            <canvas id="fa-canvas" style="display:none"></canvas>
+                            <div id="fa-status" class="fa-status-banner fa-status-info">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+                                <span id="fa-status-text">Click "Start Camera" to begin scanning</span>
+                            </div>
+                            <div class="fa-card-footer mt-auto">
+                                <button class="fa-btn-action" id="fa-start">
+                                    <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+                                        <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                                    </svg>
+                                    <span>Start Camera</span>
+                                </button>
+                            </div>
                         </div>
                     </div>
-
-                    <div class="fa-card text-center" id="fa-idle-card" style="padding:36px 20px;">
-                        <div style="opacity: 0.35; margin-bottom: 12px;">
-                            <svg width="54" height="54" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                                <circle cx="12" cy="8" r="5"></circle>
-                                <path d="M20 21a8 8 0 1 0-16 0"></path>
-                            </svg>
+                    <div class="fa-panel fa-enrollment-panel">
+                        <div class="fa-panel-header">
+                            <div class="fa-panel-title">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                                    <circle cx="8.5" cy="7.5" r="4"></circle>
+                                    <line x1="20" y1="8" x2="20" y2="14"></line>
+                                    <line x1="23" y1="11" x2="17" y2="11"></line>
+                                </svg>
+                                <span>Profile Enrollment</span>
+                            </div>
+                            <span class="fa-badge-pill fa-badge-admin">HR Admin</span>
                         </div>
-                        <h4 style="font-weight:600; color:#475569; margin-bottom:6px;">Waiting for Employee</h4>
-                        <p class="text-muted small" style="margin:0;">Look into the camera frame. Identification and attendance logging is automatic.</p>
-                    </div>
-
-                    <div class="fa-enroll-box">
-                        <div class="fa-section-header">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="8.5" cy="7.5" r="4"></circle><line x1="20" y1="8" x2="20" y2="14"></line><line x1="23" y1="11" x2="17" y2="11"></line></svg>
-                            <span>Enroll New Face Profile</span>
-                        </div>
-                        <div class="form-group mb-2">
-                            <div id="fa-employee-container"></div>
-                        </div>
-                        <div class="d-flex align-items-center justify-content-between mt-3">
-                            <span class="text-muted small">Restricted to HR / System Managers</span>
-                            <button class="fa-btn-primary" id="fa-enroll" disabled>
-                                Enroll Face
-                            </button>
+                        <div class="fa-card fa-enroll-card">
+                            <div class="fa-enroll-instruction">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+                                <span>Select an employee and align their face in the camera to register face data.</span>
+                            </div>
+                            <div class="form-group mb-3">
+                                <label class="fa-field-label">Select Employee</label>
+                                <div id="fa-employee-container"></div>
+                            </div>
+                            <div class="fa-card-footer mt-auto">
+                                <button class="fa-btn-action fa-btn-enroll" id="fa-enroll" disabled>
+                                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="8.5" cy="7.5" r="4"></circle><polyline points="17 11 19 13 23 9"></polyline></svg>
+                                    <span>Capture & Enroll Face</span>
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
-        </div>
-    `;
+        `;
+    }
 
     page.main.html(template_html);
 
@@ -125,6 +148,7 @@ frappe.pages["face-detection-kiosk"].on_page_load = function (wrapper) {
     let stream = null;
     let busy = false;
     let autoScanTimer = null;
+    let isEnrollmentMode = false;
     let lastIdentifiedEmployee = null;
     let lastIdentifiedTime = 0;
 
@@ -138,6 +162,7 @@ frappe.pages["face-detection-kiosk"].on_page_load = function (wrapper) {
             only_input: true,
             change: function () {
                 updateLinkIconsVisibility();
+                syncEnrollmentState();
             },
             get_query: function () {
                 return {
@@ -156,8 +181,38 @@ frappe.pages["face-detection-kiosk"].on_page_load = function (wrapper) {
         page.main.find("#fa-employee-container").toggleClass("has-value", hasVal);
     }
 
-    employeeControl.$input && employeeControl.$input.on("input change blur", updateLinkIconsVisibility);
+    employeeControl.$input && employeeControl.$input.on("input change blur", function () {
+        updateLinkIconsVisibility();
+        syncEnrollmentState();
+    });
     setTimeout(updateLinkIconsVisibility, 200);
+
+    function syncEnrollmentState() {
+        const selectedEmployee = (employeeControl.get_value() || "").trim();
+        isEnrollmentMode = Boolean(selectedEmployee);
+
+        if (isEnrollmentMode) {
+            stopAutoScan();
+            scanIndicator.html('<span class="fa-pulse-dot" style="background:#3b82f6;"></span> Enrollment Active').show();
+            if (stream) {
+                enrollBtn.prop("disabled", false);
+                setStatus(`Enrollment mode active for ${selectedEmployee}. Center face and click "Capture & Enroll Face".`, "info");
+            } else {
+                enrollBtn.prop("disabled", true);
+                setStatus(`Selected ${selectedEmployee}. Click "Start Camera" to capture and enroll face.`, "warning");
+            }
+        } else {
+            scanIndicator.html('<span class="fa-pulse-dot"></span> Auto-Detecting');
+            enrollBtn.prop("disabled", true);
+            if (stream) {
+                scanIndicator.show();
+                startAutoScan();
+                setStatus("Camera active & scanning. Stand in front to record attendance.", "success");
+            } else {
+                scanIndicator.hide();
+            }
+        }
+    }
 
     function setStatus(message, kind = "info") {
         statusBox.removeClass("fa-status-info fa-status-success fa-status-warning fa-status-danger")
@@ -178,7 +233,7 @@ frappe.pages["face-detection-kiosk"].on_page_load = function (wrapper) {
 
     function setBusy(value) {
         busy = value;
-        enrollBtn.prop("disabled", value || !stream);
+        enrollBtn.prop("disabled", value || !stream || !isEnrollmentMode);
         if (value) {
             scanTarget.addClass("active");
         } else {
@@ -188,13 +243,13 @@ frappe.pages["face-detection-kiosk"].on_page_load = function (wrapper) {
 
     function startAutoScan() {
         stopAutoScan();
-        if (!stream) {
+        if (!stream || isEnrollmentMode) {
             scanIndicator.hide();
             return;
         }
         scanIndicator.show();
         autoScanTimer = setInterval(async () => {
-            if (busy || !stream) return;
+            if (busy || !stream || isEnrollmentMode) return;
             await performIdentification();
         }, 2200);
     }
@@ -204,10 +259,12 @@ frappe.pages["face-detection-kiosk"].on_page_load = function (wrapper) {
             clearInterval(autoScanTimer);
             autoScanTimer = null;
         }
-        scanIndicator.hide();
+        if (!isEnrollmentMode) {
+            scanIndicator.hide();
+        }
     }
 
-    function stopCamera(message = "Camera stopped. Click 'Start Camera' for the next employee.") {
+    function stopCamera(message = "Camera stopped. Click 'Start Camera' to begin.") {
         stopAutoScan();
         if (stream) {
             stream.getTracks().forEach(track => track.stop());
@@ -236,13 +293,26 @@ frappe.pages["face-detection-kiosk"].on_page_load = function (wrapper) {
             });
             video.srcObject = stream;
             await video.play();
-            enrollBtn.prop("disabled", false);
             startBtn.hide();
-            setStatus("Camera active & scanning. Stand in front to record attendance.", "success");
-            startAutoScan();
+
+            const selectedEmployee = (employeeControl.get_value() || "").trim();
+            if (selectedEmployee) {
+                isEnrollmentMode = true;
+                stopAutoScan();
+                enrollBtn.prop("disabled", false);
+                scanIndicator.html('<span class="fa-pulse-dot" style="background:#3b82f6;"></span> Enrollment Active').show();
+                setStatus(`Camera active. Center face for ${selectedEmployee} and click "Capture & Enroll Face".`, "info");
+            } else {
+                isEnrollmentMode = false;
+                enrollBtn.prop("disabled", true);
+                scanIndicator.html('<span class="fa-pulse-dot"></span> Auto-Detecting').show();
+                setStatus("Camera active & scanning. Stand in front to record attendance.", "success");
+                startAutoScan();
+            }
         } catch (e) {
             startBtn.show();
             stoppedOverlay.show();
+            enrollBtn.prop("disabled", true);
             setStatus(e.message || "Unable to access camera. Check permissions or click Start Camera.", "danger");
         }
     }
@@ -250,7 +320,10 @@ frappe.pages["face-detection-kiosk"].on_page_load = function (wrapper) {
     startBtn.on("click", initCamera);
 
     async function performIdentification() {
-        if (busy) return;
+        if (busy || isEnrollmentMode) return;
+        const currentEmployee = (employeeControl.get_value() || "").trim();
+        if (currentEmployee) return;
+
         try {
             setBusy(true);
             const image_data = captureDataUrl();
@@ -323,7 +396,6 @@ frappe.pages["face-detection-kiosk"].on_page_load = function (wrapper) {
                 }
             }
         } catch (e) {
-            // Background scan skips silently without error alert
         } finally {
             setBusy(false);
         }
@@ -336,22 +408,39 @@ frappe.pages["face-detection-kiosk"].on_page_load = function (wrapper) {
             setStatus("Please select an employee from the dropdown before enrolling.", "warning");
             return;
         }
+        if (!stream) {
+            setStatus("Camera is not active. Click 'Start Camera' to capture face photo.", "warning");
+            return;
+        }
+
         try {
             setBusy(true);
-            setStatus("Enrolling facial profile…", "info");
+            setStatus("Extracting face features and enrolling profile…", "info");
             const image_data = captureDataUrl();
-            await frappe.call({
+            const r = await frappe.call({
                 method: "face_detection.api.enroll_face",
                 args: { employee, image_data }
             });
-            setStatus(`Face profile successfully enrolled for ${employee}.`, "success");
-            frappe.show_alert({
-                message: __("Face profile enrolled for {0}", [employee]),
-                indicator: "green"
-            }, 5);
+
+            if (r.message && r.message.ok) {
+                frappe.show_alert({
+                    message: __("Face profile enrolled successfully for {0}", [employee]),
+                    indicator: "green"
+                }, 5);
+
+                employeeControl.set_value("");
+                updateLinkIconsVisibility();
+
+                stopCamera(`Face profile enrolled for ${employee}. Camera turned off.`);
+                setStatus(`Face profile successfully enrolled for ${employee}. Camera turned off.`, "success");
+            }
         } catch (e) {
             const msg = e.message || "Enrollment failed. Ensure single face is centered.";
             setStatus(msg, "danger");
+            frappe.show_alert({
+                message: __(msg),
+                indicator: "red"
+            }, 5);
         } finally {
             setBusy(false);
         }

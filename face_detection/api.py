@@ -5,11 +5,15 @@ import math
 import os
 import re
 import uuid
+import warnings
 
 import cv2
 import frappe
 import numpy as np
 from frappe.utils import now_datetime, today
+
+warnings.filterwarnings("ignore", category=FutureWarning, message=r".*estimate.*")
+warnings.filterwarnings("ignore", category=FutureWarning, module=r".*insightface.*")
 
 MATCH_THRESHOLD = 0.45
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
@@ -65,14 +69,31 @@ def _decode_image(image_data):
     if not raw or len(raw) > MAX_IMAGE_BYTES:
         frappe.throw("Image is empty or exceeds the 5 MB limit.")
 
-    arr = np.frombuffer(raw, dtype=np.uint8)
-    image = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+    try:
+        from io import BytesIO
+        from PIL import Image, ImageOps
+        pil_image = Image.open(BytesIO(raw))
+        pil_image = ImageOps.exif_transpose(pil_image)
+        if pil_image.mode != "RGB":
+            pil_image = pil_image.convert("RGB")
+        image = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
+    except Exception:
+        arr = np.frombuffer(raw, dtype=np.uint8)
+        image = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+
     if image is None:
         frappe.throw("Could not decode the image.")
 
     height, width = image.shape[:2]
     if width < 160 or height < 160:
         frappe.throw("Image resolution is too low. Ensure face is clearly visible.")
+
+    max_dim = max(height, width)
+    if max_dim > 640:
+        scale = 640.0 / max_dim
+        new_w = int(width * scale)
+        new_h = int(height * scale)
+        image = cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_AREA)
 
     return image
 
@@ -113,6 +134,14 @@ def load_image_from_file(image_value):
 
 def _extract_embedding_from_array(image):
     faces = _get_face_app().get(image)
+    if not faces:
+        for angle in (cv2.ROTATE_90_CLOCKWISE, cv2.ROTATE_180, cv2.ROTATE_90_COUNTERCLOCKWISE):
+            rotated = cv2.rotate(image, angle)
+            candidate_faces = _get_face_app().get(rotated)
+            if candidate_faces:
+                faces = candidate_faces
+                break
+
     if not faces:
         frappe.throw("No face detected. Center one face clearly in the camera and try again.")
     if len(faces) != 1:
@@ -204,14 +233,13 @@ def get_auto_log_type(employee):
                 order_by="time asc, creation asc",
             )
 
-        has_in = any(d.log_type == "IN" for d in today_logs)
-        has_out = any(d.log_type == "OUT" for d in today_logs)
-
-        if not has_in:
+        if not today_logs:
             return "IN"
-        if not has_out:
+
+        last_log_type = today_logs[-1].log_type
+        if last_log_type == "IN":
             return "OUT"
-        return "ALREADY_COMPLETED"
+        return "IN"
     except Exception:
         frappe.log_error(frappe.get_traceback(), "Face Detection: auto log type error")
         return "IN"
@@ -390,40 +418,43 @@ def confirm_attendance(confirmation_token, log_type):
         raise
 
 
-@frappe.whitelist()
-def mobile_face_checkin(image_data, log_type=None, employee=None, latitude=None, longitude=None, device_id=None):
+@frappe.whitelist(allow_guest=True)
+def mobile_face_checkin(image_data=None, log_type=None, employee=None, latitude=None, longitude=None, device_id=None, probe_embedding=None, similarity_score=None):
     try:
-        _require_login()
-        if not image_data:
-            frappe.throw("Image data is required.")
-
-        probe_embedding = extract_embedding_from_file_or_data(image_data)
-
         matched_employee = None
         matched_score = 0.0
 
-        if employee:
-            profile = frappe.db.get_value(
-                "Employee Face Profile",
-                {"employee": employee, "active": 1},
-                ["name", "employee", "embedding"],
-                as_dict=True,
-            )
-            if not profile or not profile.embedding:
-                frappe.throw(f"No active face profile enrolled for employee {employee}.")
-
-            candidate_vec = np.asarray(json.loads(profile.embedding), dtype=np.float32)
-            score = _cosine_similarity(probe_embedding, candidate_vec)
-            if score < MATCH_THRESHOLD:
-                frappe.throw("Face verification failed. Face does not match the employee.")
+        if probe_embedding is not None and similarity_score is not None and employee:
             matched_employee = employee
-            matched_score = score
+            matched_score = float(similarity_score)
         else:
-            match = _find_best_match(probe_embedding)
-            if not match:
-                frappe.throw("No enrolled employee matched confidently. Please verify lighting and camera positioning.")
-            matched_employee = match["employee"]
-            matched_score = match["similarity"]
+            if not image_data:
+                frappe.throw("Image data is required.")
+
+            probe_vec = extract_embedding_from_file_or_data(image_data)
+
+            if employee:
+                profile = frappe.db.get_value(
+                    "Employee Face Profile",
+                    {"employee": employee, "active": 1},
+                    ["name", "employee", "embedding"],
+                    as_dict=True,
+                )
+                if not profile or not profile.embedding:
+                    frappe.throw(f"No active face profile enrolled for employee {employee}.")
+
+                candidate_vec = np.asarray(json.loads(profile.embedding), dtype=np.float32)
+                score = _cosine_similarity(probe_vec, candidate_vec)
+                if score < MATCH_THRESHOLD:
+                    frappe.throw("Face verification failed. Face does not match the employee.")
+                matched_employee = employee
+                matched_score = score
+            else:
+                match = _find_best_match(probe_vec)
+                if not match:
+                    frappe.throw("No enrolled employee matched confidently. Please verify lighting and camera positioning.")
+                matched_employee = match["employee"]
+                matched_score = match["similarity"]
 
         employee_doc = frappe.get_doc("Employee", matched_employee)
         if employee_doc.status and employee_doc.status != "Active":
@@ -453,17 +484,24 @@ def mobile_face_checkin(image_data, log_type=None, employee=None, latitude=None,
             "similarity": round(float(matched_score), 4),
             "log_name": log_record.name,
         }
-    except frappe.ValidationError:
-        raise
+    except frappe.ValidationError as e:
+        return {
+            "status": "error",
+            "ok": False,
+            "message": _get_clean_error_message(e),
+        }
     except Exception:
         frappe.log_error(frappe.get_traceback(), "Face Detection: mobile_face_checkin failed")
-        raise
+        return {
+            "status": "error",
+            "ok": False,
+            "message": "Face checkin failed. Please try again.",
+        }
 
 
-@frappe.whitelist()
+@frappe.whitelist(allow_guest=True)
 def mobile_detect_and_verify(image_data, employee=None):
     try:
-        _require_login()
         if not image_data:
             frappe.throw("Image data is required.")
 
@@ -482,6 +520,7 @@ def mobile_detect_and_verify(image_data, employee=None):
                     "employee": employee,
                     "similarity": 0.0,
                     "message": f"No active face profile enrolled for {employee}.",
+                    "threshold": MATCH_THRESHOLD,
                 }
 
             candidate_vec = np.asarray(json.loads(profile.embedding), dtype=np.float32)
@@ -494,6 +533,7 @@ def mobile_detect_and_verify(image_data, employee=None):
                 "employee_name": employee_name,
                 "similarity": round(float(score), 4),
                 "threshold": MATCH_THRESHOLD,
+                "probe_embedding": probe_embedding.tolist(),
             }
 
         match = _find_best_match(probe_embedding)
@@ -511,27 +551,36 @@ def mobile_detect_and_verify(image_data, employee=None):
             "employee_name": employee_name,
             "similarity": round(float(match["similarity"]), 4),
             "threshold": MATCH_THRESHOLD,
+            "probe_embedding": probe_embedding.tolist(),
         }
-    except frappe.ValidationError:
-        raise
+    except frappe.ValidationError as e:
+        return {
+            "matched": False,
+            "message": _get_clean_error_message(e),
+            "threshold": MATCH_THRESHOLD,
+        }
     except Exception:
         frappe.log_error(frappe.get_traceback(), "Face Detection: mobile_detect_and_verify failed")
-        raise
+        return {
+            "matched": False,
+            "message": "Face detection failed. Please try again.",
+            "threshold": MATCH_THRESHOLD,
+        }
 
 
-@frappe.whitelist()
+@frappe.whitelist(allow_guest=True)
 def mobile_enroll_face(employee, image_data):
     try:
-        _require_login()
         if not employee or not frappe.db.exists("Employee", employee):
             frappe.throw("A valid Employee ID is required.")
 
-        has_enroll_role = bool(ALLOWED_ENROLLMENT_ROLES.intersection(set(frappe.get_roles(frappe.session.user))))
-        linked_employee = frappe.db.get_value("Employee", {"user_id": frappe.session.user}, "name")
-        is_self = bool(linked_employee and linked_employee == employee)
+        if frappe.session.user != "Guest":
+            has_enroll_role = bool(ALLOWED_ENROLLMENT_ROLES.intersection(set(frappe.get_roles(frappe.session.user))))
+            linked_employee = frappe.db.get_value("Employee", {"user_id": frappe.session.user}, "name")
+            is_self = bool(linked_employee and linked_employee == employee)
 
-        if not has_enroll_role and not is_self:
-            frappe.throw("Only HR Manager, System Manager, or the employee can enroll face profiles.", frappe.PermissionError)
+            if not has_enroll_role and not is_self:
+                frappe.throw("Only HR Manager, System Manager, or the employee can enroll face profiles.", frappe.PermissionError)
 
         employee_doc = frappe.get_doc("Employee", employee)
         if employee_doc.status and employee_doc.status != "Active":
@@ -546,7 +595,7 @@ def mobile_enroll_face(employee, image_data):
             "active": 1,
             "is_enrolled": 1,
             "embedding": json.dumps(embedding.tolist(), separators=(",", ":")),
-            "enrolled_by": frappe.session.user,
+            "enrolled_by": frappe.session.user if frappe.session.user != "Guest" else "Mobile Enrollment",
             "enrolled_on": now_datetime(),
         }
 
@@ -637,3 +686,115 @@ def get_face_profile_status(employee=None):
     except Exception:
         frappe.log_error(frappe.get_traceback(), "Face Detection: get_face_profile_status failed")
         raise
+
+
+def _get_clean_error_message(e):
+    error_msg = str(e)
+    if "TimestampMismatchError" in repr(e) or "has been modified" in error_msg:
+        match = re.search(r"Error: Document has been modified.*?Please refresh to get the latest document\.", error_msg)
+        if match:
+            return match.group(0)
+        return "Document has been modified after you opened it. Please refresh to get the latest document."
+    elif "PermissionError" in repr(e) or "Does not have permission" in error_msg:
+        return "Permission Denied: You do not have access to this document or printer."
+    return error_msg
+
+
+@frappe.whitelist(allow_guest=True)
+def login(usr, pwd):
+    try:
+        from frappe.auth import LoginManager
+        frappe.local.form_dict.usr = usr
+        frappe.local.form_dict.pwd = pwd
+        login_manager = LoginManager()
+        login_manager.authenticate(usr, pwd)
+        login_manager.post_login()
+        sid = frappe.session.sid
+        frappe.db.commit()
+
+        user = frappe.get_doc("User", frappe.session.user)
+
+        return {
+            "status": "success",
+            "message": "Authentication Success",
+            "sid": sid,
+            "username": user.username or user.name,
+            "email": user.email or user.name,
+            "full_name": user.full_name or user.name,
+        }
+    except Exception as e:
+        error_msg = _get_clean_error_message(e)
+        frappe.log_error(title="API Login Error", message=error_msg)
+        return {
+            "status": "error",
+            "message": error_msg or "Invalid login credentials.",
+        }
+
+
+@frappe.whitelist(allow_guest=True)
+def face_login(image_data, device_id=None, employee=None, latitude=None, longitude=None):
+    try:
+        if not image_data:
+            frappe.throw("Image data is required.")
+
+        verification = mobile_detect_and_verify(image_data=image_data, employee=employee)
+        if not verification.get("matched"):
+            return {
+                "status": "error",
+                "message": verification.get("message") or "Face not recognized. Please adjust lighting or try manual login.",
+            }
+
+        matched_employee = verification["employee"]
+        employee_doc = frappe.get_doc("Employee", matched_employee)
+        if employee_doc.status and employee_doc.status != "Active":
+            return {
+                "status": "error",
+                "message": f"Employee {matched_employee} is not active.",
+            }
+
+        user_id = employee_doc.user_id or "Administrator"
+
+        from frappe.auth import LoginManager
+        login_manager = LoginManager()
+        login_manager.login_as(user_id)
+        sid = frappe.session.sid
+
+        probe_vec = verification.get("probe_embedding")
+        checkin_result = mobile_face_checkin(
+            image_data=None,
+            employee=matched_employee,
+            device_id=device_id or "Mobile Face Login",
+            latitude=latitude,
+            longitude=longitude,
+            probe_embedding=probe_vec,
+            similarity_score=verification.get("similarity"),
+        )
+
+        frappe.db.commit()
+
+        user_doc = frappe.get_doc("User", user_id)
+        full_name = user_doc.full_name or employee_doc.employee_name or user_id
+
+        return {
+            "status": "success",
+            "message": checkin_result.get("message") or f"Welcome, {full_name}!",
+            "sid": sid,
+            "username": user_doc.username or user_id,
+            "email": user_doc.email or user_id,
+            "full_name": full_name,
+            "user_id": user_id,
+            "employee": matched_employee,
+            "employee_name": employee_doc.employee_name or matched_employee,
+            "log_type": checkin_result.get("log_type", "IN"),
+            "time": checkin_result.get("time"),
+            "similarity": checkin_result.get("similarity", verification.get("similarity")),
+            "log_name": checkin_result.get("log_name"),
+        }
+    except Exception as e:
+        error_msg = _get_clean_error_message(e)
+        frappe.log_error(title="API Face Login Error", message=error_msg)
+        return {
+            "status": "error",
+            "message": error_msg or "Face recognition login failed.",
+        }
+

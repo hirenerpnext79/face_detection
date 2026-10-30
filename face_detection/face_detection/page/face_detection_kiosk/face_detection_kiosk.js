@@ -93,6 +93,12 @@ frappe.pages["face-detection-kiosk"].on_page_load = function (wrapper) {
                                     </svg>
                                     <span>Start Camera</span>
                                 </button>
+                                <button class="fa-btn-action fa-btn-stop" id="fa-stop" style="display:none;">
+                                    <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+                                        <rect x="6" y="6" width="12" height="12"></rect>
+                                    </svg>
+                                    <span>Stop Camera</span>
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -136,6 +142,7 @@ frappe.pages["face-detection-kiosk"].on_page_load = function (wrapper) {
     const video = page.main.find("#fa-video")[0];
     const canvas = page.main.find("#fa-canvas")[0];
     const startBtn = page.main.find("#fa-start");
+    const stopBtn = page.main.find("#fa-stop");
     const enrollBtn = page.main.find("#fa-enroll");
     const statusBox = page.main.find("#fa-status");
     const statusText = page.main.find("#fa-status-text");
@@ -151,32 +158,6 @@ frappe.pages["face-detection-kiosk"].on_page_load = function (wrapper) {
     let isEnrollmentMode = false;
     let lastIdentifiedEmployee = null;
     let lastIdentifiedTime = 0;
-    let lastFramePixels = null;
-    let staticFrameCount = 0;
-
-    function checkLiveMotion() {
-        if (!video.videoWidth || !video.videoHeight) return 100;
-        const offCanvas = document.createElement("canvas");
-        offCanvas.width = 64;
-        offCanvas.height = 48;
-        const ctx = offCanvas.getContext("2d");
-        ctx.drawImage(video, 0, 0, 64, 48);
-        const imgData = ctx.getImageData(0, 0, 64, 48).data;
-
-        if (!lastFramePixels) {
-            lastFramePixels = imgData;
-            return 100;
-        }
-
-        let diff = 0;
-        let count = 0;
-        for (let i = 0; i < imgData.length; i += 4) {
-            diff += Math.abs(imgData[i] - lastFramePixels[i]);
-            count++;
-        }
-        lastFramePixels = imgData;
-        return count ? (diff / count) : 0;
-    }
 
     const employeeControl = frappe.ui.form.make_control({
         parent: page.main.find("#fa-employee-container"),
@@ -292,14 +273,13 @@ frappe.pages["face-detection-kiosk"].on_page_load = function (wrapper) {
 
     function stopCamera(message = "Camera stopped. Click 'Start Camera' to begin.") {
         stopAutoScan();
-        lastFramePixels = null;
-        staticFrameCount = 0;
         if (stream) {
             stream.getTracks().forEach(track => track.stop());
             stream = null;
         }
         video.srcObject = null;
         stoppedOverlay.show();
+        stopBtn.hide();
         startBtn.show();
         enrollBtn.prop("disabled", true);
         setStatus(message, "warning");
@@ -322,6 +302,7 @@ frappe.pages["face-detection-kiosk"].on_page_load = function (wrapper) {
             video.srcObject = stream;
             await video.play();
             startBtn.hide();
+            stopBtn.show();
 
             const selectedEmployee = (employeeControl.get_value() || "").trim();
             if (selectedEmployee) {
@@ -338,6 +319,7 @@ frappe.pages["face-detection-kiosk"].on_page_load = function (wrapper) {
                 startAutoScan();
             }
         } catch (e) {
+            stopBtn.hide();
             startBtn.show();
             stoppedOverlay.show();
             enrollBtn.prop("disabled", true);
@@ -346,23 +328,12 @@ frappe.pages["face-detection-kiosk"].on_page_load = function (wrapper) {
     }
 
     startBtn.on("click", initCamera);
+    stopBtn.on("click", () => stopCamera("Camera stopped by user. Click 'Start Camera' to resume."));
 
     async function performIdentification() {
         if (busy || isEnrollmentMode) return;
         const currentEmployee = (employeeControl.get_value() || "").trim();
         if (currentEmployee) return;
-
-        const motionScore = checkLiveMotion();
-        if (motionScore < 0.9) {
-            staticFrameCount++;
-            if (staticFrameCount >= 2) {
-                setStatus("Live face movement required. Static image or screen detected.", "warning");
-                scanIndicator.html('<span class="fa-pulse-dot" style="background:#f59e0b;"></span> Move Naturally').show();
-                return;
-            }
-        } else {
-            staticFrameCount = 0;
-        }
 
         try {
             setBusy(true);
@@ -436,11 +407,7 @@ frappe.pages["face-detection-kiosk"].on_page_load = function (wrapper) {
                 }
             }
         } catch (e) {
-            const errorMsg = (e.message || "").toString();
-            if (errorMsg.includes("Real face") || errorMsg.includes("spoof") || errorMsg.includes("Liveness") || errorMsg.includes("Photo or")) {
-                setStatus("Real face verification failed: Mobile screen or photo scan rejected.", "danger");
-                scanIndicator.html('<span class="fa-pulse-dot" style="background:#ef4444;"></span> Spoof Rejected').show();
-            }
+            // Identification failed or no match
         } finally {
             setBusy(false);
         }

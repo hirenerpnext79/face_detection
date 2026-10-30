@@ -234,6 +234,12 @@
 .fa-btn-action:hover {
     background: #0369a1;
 }
+.fa-btn-stop {
+    background: #dc2626 !important;
+}
+.fa-btn-stop:hover {
+    background: #b91c1c !important;
+}
 
 .fa-info-panel .fa-card {
     justify-content: center;

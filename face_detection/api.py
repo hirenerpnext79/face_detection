@@ -40,7 +40,13 @@ def _get_face_app():
     if _face_app is None:
         try:
             from insightface.app import FaceAnalysis
-            _face_app = FaceAnalysis(name="buffalo_l", providers=["CPUExecutionProvider"])
+            _face_app = FaceAnalysis(
+                name="buffalo_l",
+                addons=["liveness"],
+                liveness_mode="observe",
+                liveness_threshold=0.65,
+                providers=["CPUExecutionProvider"],
+            )
             _face_app.prepare(ctx_id=-1, det_size=(640, 640))
         except Exception:
             frappe.log_error(frappe.get_traceback(), "Face Detection: model initialization failed")
@@ -132,7 +138,27 @@ def load_image_from_file(image_value):
         return None
 
 
-def _extract_embedding_from_array(image):
+def _verify_face_liveness(face):
+    try:
+        liveness = getattr(face, "liveness", None)
+        if liveness and isinstance(liveness, dict):
+            status = liveness.get("status")
+            is_live = liveness.get("is_live")
+            live_score = float(liveness.get("live_score", 0.0))
+            if status == "ok" and (is_live is False or live_score < 0.65):
+                frappe.throw(
+                    f"Real face verification failed (Liveness score: {round(live_score, 2)}). Mobile screen or photo spoof is rejected. Please stand in front of the camera naturally."
+                )
+            if status == "rejected":
+                reason = liveness.get("reason") or "Face out of bounds."
+                frappe.throw(f"Real face verification failed: {reason}")
+    except frappe.ValidationError:
+        raise
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "Face Detection: liveness verification error")
+
+
+def _extract_embedding_from_array(image, check_liveness=False):
     faces = _get_face_app().get(image)
     if not faces:
         for angle in (cv2.ROTATE_90_CLOCKWISE, cv2.ROTATE_180, cv2.ROTATE_90_COUNTERCLOCKWISE):
@@ -147,7 +173,11 @@ def _extract_embedding_from_array(image):
     if len(faces) != 1:
         frappe.throw("More than one face detected. Ensure only one person is in the frame.")
 
-    embedding = np.asarray(faces[0].normed_embedding, dtype=np.float32)
+    face = faces[0]
+    if check_liveness:
+        _verify_face_liveness(face)
+
+    embedding = np.asarray(face.normed_embedding, dtype=np.float32)
     norm = float(np.linalg.norm(embedding))
     if not math.isfinite(norm) or norm <= 0:
         frappe.throw("Could not create a valid face embedding.")
@@ -155,7 +185,7 @@ def _extract_embedding_from_array(image):
     return embedding / norm
 
 
-def extract_embedding_from_file_or_data(image_input):
+def extract_embedding_from_file_or_data(image_input, check_liveness=False):
     if not image_input or not isinstance(image_input, str):
         frappe.throw("Valid image input is required.")
 
@@ -166,7 +196,7 @@ def extract_embedding_from_file_or_data(image_input):
         if image is None:
             frappe.throw(f"Could not load image from file {image_input}")
 
-    return _extract_embedding_from_array(image)
+    return _extract_embedding_from_array(image, check_liveness=check_liveness)
 
 
 def _cosine_similarity(left, right):
@@ -333,7 +363,7 @@ def enroll_face(employee, image_data):
 def identify_employee(image_data):
     try:
         _require_login()
-        probe = extract_embedding_from_file_or_data(image_data)
+        probe = extract_embedding_from_file_or_data(image_data, check_liveness=True)
         match = _find_best_match(probe)
 
         if not match:
@@ -431,7 +461,7 @@ def mobile_face_checkin(image_data=None, log_type=None, employee=None, latitude=
             if not image_data:
                 frappe.throw("Image data is required.")
 
-            probe_vec = extract_embedding_from_file_or_data(image_data)
+            probe_vec = extract_embedding_from_file_or_data(image_data, check_liveness=True)
 
             if employee:
                 profile = frappe.db.get_value(
@@ -505,7 +535,7 @@ def mobile_detect_and_verify(image_data, employee=None):
         if not image_data:
             frappe.throw("Image data is required.")
 
-        probe_embedding = extract_embedding_from_file_or_data(image_data)
+        probe_embedding = extract_embedding_from_file_or_data(image_data, check_liveness=True)
 
         if employee:
             profile = frappe.db.get_value(

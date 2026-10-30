@@ -28,7 +28,14 @@ Previously, `EmployeeFaceProfile.validate()` threw an unhandled validation error
 
 ---
 
-## Mobile App API Endpoints
+## Anti-Spoofing & Liveness Detection (Real Face & Motion Verification)
+
+To prevent proxy attendance using mobile screen photos, printed pictures, or paper masks:
+1. **InsightFace Liveness Neural Network**: Backend API initializes `FaceAnalysis` with official `addons=["liveness"]`. During attendance verification (`identify_employee`, `mobile_face_checkin`), each detected face is scored for true human 3D liveness. Screen replays and 2D photo prints are automatically rejected with a clear message.
+2. **Kiosk Live Motion Verification**: The kiosk scanner analyzes pixel movement between consecutive frames. Static photos or frozen cameras trigger a *"Live face movement required"* prompt and block attendance until natural motion is observed.
+3. **Safe Photo Enrollment**: High-resolution file uploads and passport photos in `Employee.image` can still be enrolled by administrators without false rejection.
+
+---
 
 All endpoints are whitelisted under `face_detection.api.*`.
 

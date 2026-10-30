@@ -20,7 +20,7 @@ function update_enrollment_ui(frm) {
     }
 
     if (!frm.doc.is_enrolled || !frm.doc.embedding) {
-        frm.set_intro(__("Face is not enrolled yet. Click 'Capture Face' to capture a photo or upload an image."), "orange");
+        frm.set_intro(__("Face is not enrolled yet. Click 'Capture Face' to capture a photo using the camera."), "orange");
     } else {
         frm.set_intro(__("Face profile is enrolled and active."), "green");
     }
@@ -30,10 +30,9 @@ function capture_face_dialog(frm) {
     let stream = null;
     let video_element = null;
     let canvas_element = null;
-    let uploaded_image_data = null;
 
     const dialog = new frappe.ui.Dialog({
-        title: __("Enroll Face for {0}", [frm.doc.employee]),
+        title: __("Capture Face for {0}", [frm.doc.employee]),
         fields: [
             {
                 fieldname: "camera_html",
@@ -42,20 +41,16 @@ function capture_face_dialog(frm) {
         ],
         primary_action_label: __("Enroll Face"),
         primary_action() {
-            let image_data = uploaded_image_data;
-
-            if (!image_data && video_element && video_element.videoWidth) {
-                canvas_element.width = video_element.videoWidth;
-                canvas_element.height = video_element.videoHeight;
-                const ctx = canvas_element.getContext("2d");
-                ctx.drawImage(video_element, 0, 0, canvas_element.width, canvas_element.height);
-                image_data = canvas_element.toDataURL("image/jpeg", 0.9);
-            }
-
-            if (!image_data) {
-                frappe.msgprint(__("Please wait for camera stream or choose an image file."));
+            if (!video_element || !video_element.videoWidth) {
+                frappe.msgprint(__("Camera stream is not ready. Please ensure your camera is allowed and running."));
                 return;
             }
+
+            canvas_element.width = video_element.videoWidth;
+            canvas_element.height = video_element.videoHeight;
+            const ctx = canvas_element.getContext("2d");
+            ctx.drawImage(video_element, 0, 0, canvas_element.width, canvas_element.height);
+            const image_data = canvas_element.toDataURL("image/jpeg", 0.9);
 
             frappe.call({
                 method: "face_detection.api.enroll_face",
@@ -84,7 +79,7 @@ function capture_face_dialog(frm) {
     const html_wrapper = dialog.get_field("camera_html").$wrapper;
     html_wrapper.html(`
         <div style="text-align:center;">
-            <video id="efp-camera" autoplay playsinline muted style="width:100%;max-height:300px;background:#111;border-radius:8px;"></video>
+            <video id="efp-camera" autoplay playsinline muted style="width:100%;max-height:360px;background:#111;border-radius:8px;"></video>
             <canvas id="efp-canvas" style="display:none;"></canvas>
             <div id="efp-cam-error" class="text-danger mt-2"></div>
         </div>
@@ -92,21 +87,6 @@ function capture_face_dialog(frm) {
 
     video_element = html_wrapper.find("#efp-camera")[0];
     canvas_element = html_wrapper.find("#efp-canvas")[0];
-    const file_input = html_wrapper.find("#efp-file-input")[0];
-
-    file_input.addEventListener("change", (e) => {
-        const file = e.target.files && e.target.files[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = (loadEvent) => {
-            uploaded_image_data = loadEvent.target.result;
-            frappe.show_alert({
-                message: __("Photo selected: {0}", [file.name]),
-                indicator: "blue"
-            });
-        };
-        reader.readAsDataURL(file);
-    });
 
     navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false })
         .then(s => {
@@ -115,7 +95,7 @@ function capture_face_dialog(frm) {
             video_element.play();
         })
         .catch(err => {
-            html_wrapper.find("#efp-cam-error").text(__("Could not access camera: ") + err.message + __(". Please choose a photo below."));
+            html_wrapper.find("#efp-cam-error").text(__("Could not access camera: ") + err.message);
         });
 
     dialog.$wrapper.on("hidden.bs.modal", () => {

@@ -1,0 +1,149 @@
+<div class="fa-container">
+    <div class="fa-top-bar">
+        <div class="fa-tabs-nav">
+            <button class="fa-tab-item active" data-tab="kiosk">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                    <line x1="8" y1="21" x2="16" y2="21"></line>
+                    <line x1="12" y1="17" x2="12" y2="21"></line>
+                </svg>
+                <span>Attendance Kiosk</span>
+            </button>
+            <button class="fa-tab-item" data-tab="enrollment">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                    <circle cx="8.5" cy="7.5" r="4"></circle>
+                    <line x1="20" y1="8" x2="20" y2="14"></line>
+                    <line x1="23" y1="11" x2="17" y2="11"></line>
+                </svg>
+                <span>Profile Enrollment</span>
+            </button>
+        </div>
+
+        <div class="fa-top-logs-info" id="fa-top-logs-info">
+            <div class="fa-date-badge">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                    <line x1="16" y1="2" x2="16" y2="6"></line>
+                    <line x1="8" y1="2" x2="8" y2="6"></line>
+                    <line x1="3" y1="10" x2="21" y2="10"></line>
+                </svg>
+                <span>Date: <strong id="fa-current-date">--</strong></span>
+            </div>
+            <span class="fa-logs-count-badge" id="fa-logs-count">0 logs</span>
+            <button class="fa-btn-refresh-logs" id="fa-btn-refresh-logs" title="Refresh Attendance Logs">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="23 4 23 10 17 10"></polyline>
+                    <polyline points="1 20 1 14 7 14"></polyline>
+                    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                </svg>
+                <span>Refresh</span>
+            </button>
+        </div>
+    </div>
+
+    <div class="fa-main-row" id="fa-main-row">
+        <div class="fa-card fa-camera-card" id="fa-camera-card">
+            <div class="fa-punch-alert" id="fa-punch-alert" style="display:none;">
+                <span class="fa-punch-type-badge" id="fa-punch-type-badge">IN</span>
+                <div class="fa-punch-info">
+                    <div class="fa-punch-emp" id="fa-punch-emp">--</div>
+                    <div class="fa-punch-meta" id="fa-punch-meta">Marked Successfully</div>
+                </div>
+            </div>
+
+            <div class="fa-camera-viewport">
+                <video id="fa-video" autoplay playsinline muted></video>
+                <div class="fa-hud-badge" id="fa-scan-indicator">
+                    <span class="fa-pulse-dot"></span> Auto-Detecting
+                </div>
+                <div class="fa-camera-stopped-overlay" id="fa-stopped-overlay">
+                    <div class="fa-stopped-icon">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <polygon points="10 8 16 12 10 16 10 8" fill="currentColor"></polygon>
+                        </svg>
+                    </div>
+                    <div class="fa-stopped-msg" id="fa-overlay-title">Connecting Camera...</div>
+                    <div class="fa-stopped-sub" id="fa-overlay-sub">Please connect camera or allow permissions</div>
+                </div>
+            </div>
+            <canvas id="fa-canvas" style="display:none"></canvas>
+
+            <div class="fa-card-footer" id="fa-camera-actions">
+                <button class="fa-btn-action" id="fa-capture-face" style="display:none;">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                        <circle cx="12" cy="13" r="4"></circle>
+                    </svg>
+                    <span>Capture Face</span>
+                </button>
+                <button class="fa-btn-action fa-btn-stop" id="fa-stop-camera" style="display:none;">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+                        <rect x="6" y="6" width="12" height="12"></rect>
+                    </svg>
+                    <span>Stop Camera</span>
+                </button>
+                <button class="fa-btn-action" id="fa-start-camera" style="display:none;">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+                        <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                    </svg>
+                    <span>Start Camera</span>
+                </button>
+            </div>
+        </div>
+
+        <div class="fa-card fa-logs-card" id="fa-logs-panel">
+            <div class="fa-table-responsive">
+                <table class="fa-logs-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 36%;">Employee</th>
+                            <th style="width: 22%;">Time</th>
+                            <th style="width: 20%;">In/Out</th>
+                            <th style="width: 22%;">Category</th>
+                        </tr>
+                    </thead>
+                    <tbody id="fa-logs-tbody">
+                        <tr>
+                            <td colspan="4" class="text-center text-muted py-3">Loading logs...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="fa-card fa-enroll-card" id="fa-enroll-card" style="display:none;">
+            <div class="fa-enroll-header">
+                <div class="fa-panel-title">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                        <circle cx="8.5" cy="7.5" r="4"></circle>
+                        <line x1="20" y1="8" x2="20" y2="14"></line>
+                        <line x1="23" y1="11" x2="17" y2="11"></line>
+                    </svg>
+                    <span>Profile Enrollment</span>
+                </div>
+                <span class="fa-badge-pill fa-badge-admin">HR Admin</span>
+            </div>
+
+            <div class="fa-enroll-instruction">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+                <span>Select an employee and align their face in the camera to register face data.</span>
+            </div>
+
+            <div class="form-group mb-3">
+                <label class="fa-field-label">Select Employee</label>
+                <div id="fa-employee-container"></div>
+                <div id="fa-enroll-employee-status" style="display:none;"></div>
+            </div>
+
+            <div class="fa-card-footer mt-auto">
+                <button class="fa-btn-action fa-btn-enroll" id="fa-enroll" disabled>
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="8.5" cy="7.5" r="4"></circle><polyline points="17 11 19 13 23 9"></polyline></svg>
+                    <span>Capture & Enroll Face</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>

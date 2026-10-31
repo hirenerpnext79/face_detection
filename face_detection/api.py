@@ -9,6 +9,7 @@ import warnings
 
 import cv2
 import frappe
+from frappe import _
 import numpy as np
 from frappe.utils import now_datetime, today
 
@@ -213,37 +214,110 @@ def _find_best_match(probe_embedding):
     return None
 
 
-def get_auto_log_type(employee):
+def get_employee_today_logs(employee):
     try:
         today_date = today()
-        today_logs = frappe.db.get_all(
+        logs = frappe.db.get_all(
             "Face Detection Log",
             filters={
                 "employee": employee,
                 "time": [">=", f"{today_date} 00:00:00"]
             },
-            fields=["log_type", "time"],
+            fields=["name", "log_type", "time"],
             order_by="time asc, creation asc",
         )
 
-        if not today_logs and frappe.db.exists("DocType", "Employee Checkin"):
-            today_logs = frappe.db.get_all(
+        if not logs and frappe.db.exists("DocType", "Employee Checkin"):
+            logs = frappe.db.get_all(
                 "Employee Checkin",
                 filters={
                     "employee": employee,
                     "time": [">=", f"{today_date} 00:00:00"]
                 },
-                fields=["log_type", "time"],
+                fields=["name", "log_type", "time"],
                 order_by="time asc, creation asc",
             )
+        return logs or []
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "Face Detection: get_employee_today_logs error")
+        return []
 
-        if not today_logs:
-            return "IN"
 
-        last_log_type = today_logs[-1].log_type
-        if last_log_type == "IN":
-            return "OUT"
-        return "IN"
+def check_today_attendance_status(employee):
+    try:
+        logs = get_employee_today_logs(employee)
+        has_in = any(l.log_type == "IN" for l in logs)
+        has_out = any(l.log_type == "OUT" for l in logs)
+
+        gate_settings = frappe.get_single("Gate Face Punching")
+        kiosk_mode = (gate_settings.mode or "").strip().upper() if gate_settings else ""
+
+        if has_in and has_out:
+            return {
+                "completed": True,
+                "next_action": None,
+                "message": _("Already today IN and OUT log created"),
+                "logs_count": len(logs),
+            }
+
+        if kiosk_mode == "IN":
+            if has_in:
+                return {
+                    "completed": True,
+                    "next_action": None,
+                    "message": _("Already today IN log created"),
+                    "logs_count": len(logs),
+                }
+            return {
+                "completed": False,
+                "next_action": "IN",
+                "message": None,
+                "logs_count": len(logs),
+            }
+
+        if kiosk_mode == "OUT":
+            if has_out:
+                return {
+                    "completed": True,
+                    "next_action": None,
+                    "message": _("Already today OUT log created"),
+                    "logs_count": len(logs),
+                }
+            return {
+                "completed": False,
+                "next_action": "OUT",
+                "message": None,
+                "logs_count": len(logs),
+            }
+
+        if has_in:
+            return {
+                "completed": False,
+                "next_action": "OUT",
+                "message": None,
+                "logs_count": len(logs),
+            }
+
+        return {
+            "completed": False,
+            "next_action": "IN",
+            "message": None,
+            "logs_count": len(logs),
+        }
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "Face Detection: check_today_attendance_status error")
+        return {
+            "completed": False,
+            "next_action": "IN",
+            "message": None,
+            "logs_count": 0,
+        }
+
+
+def get_auto_log_type(employee):
+    try:
+        status = check_today_attendance_status(employee)
+        return status.get("next_action")
     except Exception:
         frappe.log_error(frappe.get_traceback(), "Face Detection: auto log type error")
         return "IN"
@@ -253,12 +327,15 @@ def record_attendance_log(employee, log_type, similarity=None):
     try:
         checkin_time = now_datetime()
         employee_name = frappe.db.get_value("Employee", employee, "employee_name") or employee
+        gate_settings = frappe.get_single("Gate Face Punching")
+        punch_category = gate_settings.punch_category if gate_settings and gate_settings.punch_category else "Attendance"
 
         log_doc = frappe.get_doc({
             "doctype": "Face Detection Log",
             "employee": employee,
             "employee_name": employee_name,
             "log_type": log_type,
+            "punch_category": punch_category,
             "time": checkin_time,
             "similarity_score": similarity,
         })
@@ -282,7 +359,7 @@ def record_attendance_log(employee, log_type, similarity=None):
 
 
 @frappe.whitelist()
-def enroll_face(employee, image_data):
+def enroll_face(employee, image_data, re_enroll=0):
     try:
         _require_enrollment_role()
         if not employee or not frappe.db.exists("Employee", employee):
@@ -292,8 +369,24 @@ def enroll_face(employee, image_data):
         if employee_doc.status and employee_doc.status != "Active":
             frappe.throw("Only active employees can be enrolled.")
 
+        existing_profile = frappe.db.get_value(
+            "Employee Face Profile",
+            {"employee": employee},
+            ["name", "is_enrolled", "embedding"],
+            as_dict=True,
+        )
+
+        if existing_profile and existing_profile.is_enrolled and existing_profile.embedding and not frappe.utils.cint(re_enroll):
+            return {
+                "ok": False,
+                "already_enrolled": True,
+                "employee": employee,
+                "employee_name": employee_doc.employee_name or employee,
+                "message": f"Face profile is already enrolled for this employee ({employee}).",
+            }
+
         embedding = extract_embedding_from_file_or_data(image_data)
-        profile_name = frappe.db.get_value("Employee Face Profile", {"employee": employee}, "name")
+        profile_name = existing_profile.name if existing_profile else None
 
         values = {
             "employee": employee,
@@ -342,6 +435,17 @@ def identify_employee(image_data):
         if employee_doc.status and employee_doc.status != "Active":
             frappe.throw("The matched employee is not active.")
 
+        status = check_today_attendance_status(matched_employee)
+        if status.get("completed"):
+            return {
+                "employee": matched_employee,
+                "employee_name": employee_doc.employee_name or matched_employee,
+                "similarity": round(match["similarity"], 4),
+                "already_completed": True,
+                "message": status.get("message") or _("Already today IN and OUT log created"),
+                "auto_action": None,
+            }
+
         token = uuid.uuid4().hex
         cache_key = "face_detection:confirmation:" + token
         frappe.cache().set_value(
@@ -350,7 +454,7 @@ def identify_employee(image_data):
             expires_in_sec=CONFIRMATION_TTL_SECONDS,
         )
 
-        auto_action = get_auto_log_type(matched_employee)
+        auto_action = status.get("next_action") or "IN"
 
         return {
             "employee": matched_employee,
@@ -359,6 +463,7 @@ def identify_employee(image_data):
             "confirmation_token": token,
             "expires_in_seconds": CONFIRMATION_TTL_SECONDS,
             "auto_action": auto_action,
+            "already_completed": False,
         }
     except frappe.ValidationError:
         raise
@@ -393,6 +498,10 @@ def confirm_attendance(confirmation_token, log_type):
         employee_doc = frappe.get_doc("Employee", employee)
         if employee_doc.status and employee_doc.status != "Active":
             frappe.throw("Only active employees can check in/out.")
+
+        status = check_today_attendance_status(employee)
+        if status.get("completed"):
+            frappe.throw(status.get("message") or _("Already today IN and OUT log created"))
 
         log_record = record_attendance_log(
             employee=employee,
@@ -457,9 +566,20 @@ def mobile_face_checkin(image_data=None, log_type=None, employee=None, probe_emb
         if employee_doc.status and employee_doc.status != "Active":
             frappe.throw(f"Employee {matched_employee} is not active.")
 
+        status = check_today_attendance_status(matched_employee)
+        if status.get("completed"):
+            return {
+                "status": "warning",
+                "ok": False,
+                "already_completed": True,
+                "message": status.get("message") or _("Already today IN and OUT log created"),
+                "employee": matched_employee,
+                "employee_name": employee_doc.employee_name or matched_employee,
+            }
+
         final_log_type = (log_type or "").upper()
         if final_log_type not in ("IN", "OUT"):
-            final_log_type = get_auto_log_type(matched_employee)
+            final_log_type = status.get("next_action") or "IN"
 
         log_record = record_attendance_log(
             employee=matched_employee,
@@ -574,7 +694,7 @@ def mobile_detect_and_verify(image_data, employee=None):
 
 
 @frappe.whitelist(allow_guest=True)
-def mobile_enroll_face(employee, image_data):
+def mobile_enroll_face(employee, image_data, re_enroll=0):
     try:
         if not employee or not frappe.db.exists("Employee", employee):
             frappe.throw("A valid Employee ID is required.")
@@ -591,8 +711,25 @@ def mobile_enroll_face(employee, image_data):
         if employee_doc.status and employee_doc.status != "Active":
             frappe.throw("Only active employees can be enrolled.")
 
+        existing_profile = frappe.db.get_value(
+            "Employee Face Profile",
+            {"employee": employee},
+            ["name", "is_enrolled", "embedding"],
+            as_dict=True,
+        )
+
+        if existing_profile and existing_profile.is_enrolled and existing_profile.embedding and not frappe.utils.cint(re_enroll):
+            return {
+                "status": "error",
+                "ok": False,
+                "already_enrolled": True,
+                "employee": employee,
+                "employee_name": employee_doc.employee_name or employee,
+                "message": f"Face profile is already enrolled for this employee ({employee}).",
+            }
+
         embedding = extract_embedding_from_file_or_data(image_data)
-        profile_name = frappe.db.get_value("Employee Face Profile", {"employee": employee}, "name")
+        profile_name = existing_profile.name if existing_profile else None
 
         values = {
             "employee": employee,
@@ -647,14 +784,14 @@ def get_today_attendance(employee=None):
             limit_page_length=50,
         )
 
-        next_action = "IN"
-        if logs and logs[-1].log_type == "IN":
-            next_action = "OUT"
+        status = check_today_attendance_status(employee) if employee else {}
 
         return {
             "employee": employee,
             "logs": logs,
-            "next_action": next_action,
+            "next_action": status.get("next_action") if employee else ("OUT" if logs and logs[-1].log_type == "IN" else "IN"),
+            "already_completed": status.get("completed", False) if employee else False,
+            "message": status.get("message") if employee else None,
             "count": len(logs)
         }
     except Exception:
@@ -675,7 +812,7 @@ def get_face_profile_status(employee=None):
         profile = frappe.db.get_value(
             "Employee Face Profile",
             {"employee": employee},
-            ["name", "employee", "employee_name", "active", "is_enrolled", "enrolled_on"],
+            ["name", "employee", "employee_name", "active", "is_enrolled", "enrolled_on", "embedding"],
             as_dict=True,
         )
 
@@ -683,7 +820,7 @@ def get_face_profile_status(employee=None):
             return {"enrolled": False, "employee": employee}
 
         return {
-            "enrolled": bool(profile.is_enrolled and profile.active),
+            "enrolled": bool(profile.is_enrolled and profile.active and profile.embedding),
             "employee": profile.employee,
             "employee_name": profile.employee_name,
             "enrolled_on": profile.enrolled_on,
@@ -691,6 +828,82 @@ def get_face_profile_status(employee=None):
     except Exception:
         frappe.log_error(frappe.get_traceback(), "Face Detection: get_face_profile_status failed")
         raise
+
+
+@frappe.whitelist()
+def get_kiosk_settings():
+    try:
+        _require_login()
+        settings = frappe.get_single("Gate Face Punching")
+        return {
+            "auto_detect": frappe.utils.cint(settings.auto_detect),
+            "mode": settings.mode or "",
+            "punch_category": settings.punch_category or ""
+        }
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "Face Detection: get_kiosk_settings failed")
+        return {
+            "auto_detect": 0,
+            "mode": "",
+            "punch_category": ""
+        }
+
+
+@frappe.whitelist()
+def get_face_detection_logs(log_date=None, limit=50):
+    try:
+        _require_login()
+        target_date = log_date or today()
+        start_datetime = f"{target_date} 00:00:00"
+        end_datetime = f"{target_date} 23:59:59"
+
+        logs = frappe.db.get_all(
+            "Face Detection Log",
+            filters={
+                "time": ["between", [start_datetime, end_datetime]]
+            },
+            fields=["name", "employee", "employee_name", "time", "log_type", "punch_category"],
+            order_by="time desc, creation desc",
+            limit_page_length=frappe.utils.cint(limit) or 50,
+        )
+
+        employee_names = {}
+        formatted_logs = []
+        for row in logs:
+            emp = row.employee
+            if not row.employee_name:
+                if emp not in employee_names:
+                    employee_names[emp] = frappe.db.get_value("Employee", emp, "employee_name") or emp
+                emp_name = employee_names[emp]
+            else:
+                emp_name = row.employee_name
+
+            time_str = frappe.utils.format_time(row.time) if row.time else ""
+            category = row.punch_category or "Attendance"
+
+            formatted_logs.append({
+                "name": row.name,
+                "employee": emp,
+                "employee_name": emp_name,
+                "time": time_str,
+                "log_type": row.log_type,
+                "category": category,
+            })
+
+        return {
+            "date": target_date,
+            "formatted_date": frappe.utils.formatdate(target_date),
+            "logs": formatted_logs,
+            "count": len(formatted_logs)
+        }
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "Face Detection: get_face_detection_logs failed")
+        return {
+            "date": log_date or today(),
+            "formatted_date": frappe.utils.formatdate(log_date or today()),
+            "logs": [],
+            "count": 0
+        }
 
 
 def _get_clean_error_message(e):

@@ -7,26 +7,36 @@ frappe.ui.form.on("Employee Face Profile", {
 function update_enrollment_ui(frm) {
     frm.dashboard.clear_headline();
     frm.page.remove_inner_button(__("Capture Face"));
+    frm.page.remove_inner_button(__("Re-enroll Face"));
 
     if (frm.is_new()) {
         frm.set_intro(__("Please select an Employee and save the profile first. The Capture Face button will appear after saving."), "blue");
         return;
     }
 
-    if (frm.doc.employee) {
-        frm.add_custom_button(__("Capture Face"), () => {
-            capture_face_dialog(frm);
-        });
-    }
-
     if (!frm.doc.is_enrolled || !frm.doc.embedding) {
         frm.set_intro(__("Face is not enrolled yet. Click 'Capture Face' to capture a photo using the camera."), "orange");
+        if (frm.doc.employee) {
+            frm.add_custom_button(__("Capture Face"), () => {
+                capture_face_dialog(frm, 0);
+            });
+        }
     } else {
-        frm.set_intro(__("Face profile is enrolled and active."), "green");
+        frm.set_intro(__("Face profile is already enrolled for this employee and active."), "green");
+        if (frm.doc.employee) {
+            frm.add_custom_button(__("Re-enroll Face"), () => {
+                frappe.confirm(
+                    __("Face profile is already enrolled for this employee ({0}). Do you want to capture a new photo and update their face profile?", [frm.doc.employee]),
+                    () => {
+                        capture_face_dialog(frm, 1);
+                    }
+                );
+            });
+        }
     }
 }
 
-function capture_face_dialog(frm) {
+function capture_face_dialog(frm, re_enroll = 0) {
     let stream = null;
     let video_element = null;
     let canvas_element = null;
@@ -39,7 +49,7 @@ function capture_face_dialog(frm) {
                 fieldtype: "HTML"
             }
         ],
-        primary_action_label: __("Enroll Face"),
+        primary_action_label: re_enroll ? __("Re-enroll Face") : __("Enroll Face"),
         primary_action() {
             if (!video_element || !video_element.videoWidth) {
                 frappe.msgprint(__("Camera stream is not ready. Please ensure your camera is allowed and running."));
@@ -56,11 +66,20 @@ function capture_face_dialog(frm) {
                 method: "face_detection.api.enroll_face",
                 args: {
                     employee: frm.doc.employee,
-                    image_data: image_data
+                    image_data: image_data,
+                    re_enroll: re_enroll
                 },
                 freeze: true,
                 freeze_message: __("Extracting Face Embedding..."),
                 callback(r) {
+                    if (r.message && r.message.already_enrolled) {
+                        dialog.hide();
+                        frappe.show_alert({
+                            message: __(r.message.message || "Face profile is already enrolled for this employee."),
+                            indicator: "orange"
+                        });
+                        return;
+                    }
                     if (r.message && r.message.ok) {
                         dialog.hide();
                         frm.reload_doc();

@@ -1,0 +1,58 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-10-31 14:14:55.827159",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "mode",
+  "punch_category",
+  "auto_detect"
+ ],
+ "fields": [
+  {
+   "fieldname": "mode",
+   "fieldtype": "Select",
+   "label": "Mode",
+   "options": "IN\nOUT"
+  },
+  {
+   "fieldname": "punch_category",
+   "fieldtype": "Select",
+   "label": "Punch Category",
+   "options": "Attendance\nBio\nMeal\nVisit\nPersonal"
+  },
+  {
+   "default": "0",
+   "fieldname": "auto_detect",
+   "fieldtype": "Check",
+   "label": "Auto Detect"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-10-31 14:17:59.484602",
+ "modified_by": "Administrator",
+ "module": "Face Detection",
+ "name": "Gate Face Punching",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

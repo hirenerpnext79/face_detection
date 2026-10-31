@@ -1,6 +1,6 @@
 {
  "charts": [],
- "content": "[{\"id\":\"gcphmRe9YU\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Face Detection</b></span>\",\"col\":12}},{\"id\":\"sc1\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Live Face Scanner\",\"col\":4}},{\"id\":\"sc2\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Employee Face Profile\",\"col\":4}},{\"id\":\"sc3\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Face Detection Log\",\"col\":4}}]",
+ "content": "[{\"id\":\"gcphmRe9YU\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Face Detection</b></span>\",\"col\":12}},{\"id\":\"sc1\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Live Face Scanner\",\"col\":4}},{\"id\":\"sc2\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Employee Face Profile\",\"col\":4}},{\"id\":\"sc3\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Face Detection Log\",\"col\":4}},{\"id\":\"cs-vMnhvv3\",\"type\":\"card\",\"data\":{\"card_name\":\"Settings\",\"col\":4}}]",
  "creation": "2026-10-28 14:30:41.862192",
  "custom_blocks": [],
  "docstatus": 0,
@@ -11,8 +11,28 @@
  "indicator_color": "green",
  "is_hidden": 0,
  "label": "Face Detection",
- "links": [],
- "modified": "2026-10-29 11:21:16.838832",
+ "links": [
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Settings",
+   "link_count": 1,
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Gate Face Punching",
+   "link_count": 0,
+   "link_to": "Gate Face Punching",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  }
+ ],
+ "modified": "2026-10-31 17:47:02.900073",
  "modified_by": "Administrator",
  "module": "Face Detection",
  "name": "Face Detection",
@@ -28,7 +48,7 @@
    "color": "Green",
    "doc_view": "",
    "label": "Live Face Scanner",
-   "link_to": "face-detection-kiosk",
+   "link_to": "face-detection-page",
    "type": "Page"
   },
   {

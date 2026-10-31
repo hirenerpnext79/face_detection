@@ -7,7 +7,9 @@
  "field_order": [
   "naming_series",
   "employee",
+  "employee_name",
   "log_type",
+  "punch_category",
   "time",
   "column_break_main",
   "similarity_score"
@@ -33,6 +35,13 @@
    "reqd": 1
   },
   {
+   "fieldname": "employee_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Employee Name",
+   "read_only": 1
+  },
+  {
    "fieldname": "log_type",
    "fieldtype": "Select",
    "in_list_view": 1,
@@ -41,6 +50,15 @@
    "options": "IN\nOUT",
    "read_only": 1,
    "reqd": 1
+  },
+  {
+   "default": "Attendance",
+   "fieldname": "punch_category",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Punch Category",
+   "options": "Attendance\nBio\nMeal\nVisit\nPersonal"
   },
   {
    "fieldname": "time",
@@ -65,7 +83,7 @@
   }
  ],
  "links": [],
- "modified": "2026-10-29 10:50:00.000000",
+ "modified": "2026-10-31 14:30:00.000000",
  "modified_by": "Administrator",
  "module": "Face Detection",
  "name": "Face Detection Log",

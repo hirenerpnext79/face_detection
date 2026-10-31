@@ -249,7 +249,7 @@ def get_auto_log_type(employee):
         return "IN"
 
 
-def record_attendance_log(employee, log_type, similarity=None, device_id=None, latitude=None, longitude=None):
+def record_attendance_log(employee, log_type, similarity=None):
     try:
         checkin_time = now_datetime()
         employee_name = frappe.db.get_value("Employee", employee, "employee_name") or employee
@@ -265,19 +265,13 @@ def record_attendance_log(employee, log_type, similarity=None, device_id=None, l
         log_doc.insert(ignore_permissions=True)
 
         if frappe.db.exists("DocType", "Employee Checkin"):
-            checkin_data = {
+            employee_checkin = frappe.get_doc({
                 "doctype": "Employee Checkin",
                 "employee": employee,
                 "time": checkin_time,
                 "log_type": log_type,
-                "device_id": device_id or "Face Detection",
-            }
-            if latitude and hasattr(frappe.get_meta("Employee Checkin"), "latitude"):
-                checkin_data["latitude"] = latitude
-            if longitude and hasattr(frappe.get_meta("Employee Checkin"), "longitude"):
-                checkin_data["longitude"] = longitude
-
-            employee_checkin = frappe.get_doc(checkin_data)
+                "device_id": "Face Detection",
+            })
             employee_checkin.insert(ignore_permissions=True)
 
         frappe.db.commit()
@@ -404,7 +398,6 @@ def confirm_attendance(confirmation_token, log_type):
             employee=employee,
             log_type=log_type,
             similarity=payload.get("similarity"),
-            device_id="Face Detection Kiosk",
         )
 
         return {
@@ -423,7 +416,7 @@ def confirm_attendance(confirmation_token, log_type):
 
 
 @frappe.whitelist(allow_guest=True)
-def mobile_face_checkin(image_data=None, log_type=None, employee=None, latitude=None, longitude=None, device_id=None, probe_embedding=None, similarity_score=None):
+def mobile_face_checkin(image_data=None, log_type=None, employee=None, probe_embedding=None, similarity_score=None, **kwargs):
     try:
         matched_employee = None
         matched_score = 0.0
@@ -472,9 +465,6 @@ def mobile_face_checkin(image_data=None, log_type=None, employee=None, latitude=
             employee=matched_employee,
             log_type=final_log_type,
             similarity=round(float(matched_score), 4),
-            device_id=device_id or "Mobile App",
-            latitude=latitude,
-            longitude=longitude,
         )
 
         return {
@@ -715,101 +705,5 @@ def _get_clean_error_message(e):
     return error_msg
 
 
-@frappe.whitelist(allow_guest=True)
-def login(usr, pwd):
-    try:
-        from frappe.auth import LoginManager
-        frappe.local.form_dict.usr = usr
-        frappe.local.form_dict.pwd = pwd
-        login_manager = LoginManager()
-        login_manager.authenticate(usr, pwd)
-        login_manager.post_login()
-        sid = frappe.session.sid
-        frappe.db.commit()
 
-        user = frappe.get_doc("User", frappe.session.user)
-
-        return {
-            "status": "success",
-            "message": "Authentication Success",
-            "sid": sid,
-            "username": user.username or user.name,
-            "email": user.email or user.name,
-            "full_name": user.full_name or user.name,
-        }
-    except Exception as e:
-        error_msg = _get_clean_error_message(e)
-        frappe.log_error(title="API Login Error", message=error_msg)
-        return {
-            "status": "error",
-            "message": error_msg or "Invalid login credentials.",
-        }
-
-
-@frappe.whitelist(allow_guest=True)
-def face_login(image_data, device_id=None, employee=None, latitude=None, longitude=None):
-    try:
-        if not image_data:
-            frappe.throw("Image data is required.")
-
-        verification = mobile_detect_and_verify(image_data=image_data, employee=employee)
-        if not verification.get("matched"):
-            return {
-                "status": "error",
-                "message": verification.get("message") or "Face not recognized. Please adjust lighting or try manual login.",
-            }
-
-        matched_employee = verification["employee"]
-        employee_doc = frappe.get_doc("Employee", matched_employee)
-        if employee_doc.status and employee_doc.status != "Active":
-            return {
-                "status": "error",
-                "message": f"Employee {matched_employee} is not active.",
-            }
-
-        user_id = employee_doc.user_id or "Administrator"
-
-        from frappe.auth import LoginManager
-        login_manager = LoginManager()
-        login_manager.login_as(user_id)
-        sid = frappe.session.sid
-
-        probe_vec = verification.get("probe_embedding")
-        checkin_result = mobile_face_checkin(
-            image_data=None,
-            employee=matched_employee,
-            device_id=device_id or "Mobile Face Login",
-            latitude=latitude,
-            longitude=longitude,
-            probe_embedding=probe_vec,
-            similarity_score=verification.get("similarity"),
-        )
-
-        frappe.db.commit()
-
-        user_doc = frappe.get_doc("User", user_id)
-        full_name = user_doc.full_name or employee_doc.employee_name or user_id
-
-        return {
-            "status": "success",
-            "message": checkin_result.get("message") or f"Welcome, {full_name}!",
-            "sid": sid,
-            "username": user_doc.username or user_id,
-            "email": user_doc.email or user_id,
-            "full_name": full_name,
-            "user_id": user_id,
-            "employee": matched_employee,
-            "employee_name": employee_doc.employee_name or matched_employee,
-            "log_type": checkin_result.get("log_type", "IN"),
-            "time": checkin_result.get("time"),
-            "similarity": checkin_result.get("similarity", verification.get("similarity")),
-            "log_name": checkin_result.get("log_name"),
-        }
-    except Exception as e:
-        error_msg = _get_clean_error_message(e)
-        frappe.log_error(title="API Face Login Error", message=error_msg)
-        return {
-            "status": "error",
-            "message": error_msg or "Face recognition login failed.",
-        }
 

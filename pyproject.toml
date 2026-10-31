@@ -9,6 +9,13 @@ description = "Face identification and manually confirmed ERPNext employee check
 requires-python = ">=3.10"
 readme = "README.md"
 dynamic = ["version"]
+dependencies = [
+    "numpy",
+    "opencv-python-headless",
+    "insightface",
+    "onnxruntime",
+    "Pillow",
+]
 
 [tool.flit.module]
 name = "face_detection"

@@ -27,7 +27,6 @@
   {
    "fieldname": "employee",
    "fieldtype": "Link",
-   "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Employee",
    "options": "Employee",
@@ -83,7 +82,7 @@
   }
  ],
  "links": [],
- "modified": "2026-10-31 14:30:00.000000",
+ "modified": "2026-11-02 11:54:58.050664",
  "modified_by": "Administrator",
  "module": "Face Detection",
  "name": "Face Detection Log",

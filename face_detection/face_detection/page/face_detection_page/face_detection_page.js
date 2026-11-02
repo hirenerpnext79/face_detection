@@ -406,22 +406,47 @@ frappe.pages["face-detection-page"].on_page_load = function (wrapper) {
 
             if (result.already_completed) {
                 const msg = result.message || __("Already today IN and OUT log created");
-                punchAlert.removeClass("fa-punch-in fa-punch-out")
-                          .addClass("fa-punch-warning");
-                punchBadge.text("LOGGED");
-                punchEmp.text(empName && empName !== emp ? `${empName} (${emp})` : emp);
-                punchMeta.text(msg);
-                punchAlert.stop(true, true).slideDown(200);
+                const isOutBlocked = Boolean(result.out_time_blocked || msg.includes("OUT entry is allowed after"));
 
-                frappe.show_alert({
-                    message: `${empName}: ${msg}`,
-                    indicator: "orange"
-                }, 5);
+                punchAlert.removeClass("fa-punch-in fa-punch-out fa-punch-warning fa-punch-danger");
+
+                if (isOutBlocked) {
+                    punchAlert.addClass("fa-punch-danger");
+                    punchBadge.text("WAIT");
+                    punchEmp.text(empName && empName !== emp ? `${empName} (${emp})` : emp);
+
+                    const timeMatch = msg.match(/after\s+(.+)$/i);
+                    const allowedTimeStr = result.allowed_time || (timeMatch ? timeMatch[1] : "");
+
+                    punchMeta.html(`
+                        <div style="font-size: 12px; opacity: 0.9;">${__("Already today IN log created")}</div>
+                        <div class="fa-out-time-highlight">
+                            ⛔ ${__("OUT entry is allowed after {0}", [allowedTimeStr])}
+                        </div>
+                    `);
+
+                    frappe.show_alert({
+                        message: `<div style="font-size: 13px; font-weight: 700; color: #dc2626;">${frappe.utils.escape_html(empName)}: ${frappe.utils.escape_html(msg)}</div>`,
+                        indicator: "red"
+                    }, 6);
+                } else {
+                    punchAlert.addClass("fa-punch-warning");
+                    punchBadge.text("LOGGED");
+                    punchEmp.text(empName && empName !== emp ? `${empName} (${emp})` : emp);
+                    punchMeta.text(msg);
+
+                    frappe.show_alert({
+                        message: `${empName}: ${msg}`,
+                        indicator: "orange"
+                    }, 5);
+                }
+
+                punchAlert.stop(true, true).slideDown(200);
 
                 if (resetMatchTimer) clearTimeout(resetMatchTimer);
                 resetMatchTimer = setTimeout(() => {
                     punchAlert.slideUp(250);
-                }, 5000);
+                }, isOutBlocked ? 7000 : 5000);
                 return;
             }
 

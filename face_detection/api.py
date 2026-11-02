@@ -11,7 +11,7 @@ import cv2
 import frappe
 from frappe import _
 import numpy as np
-from frappe.utils import now_datetime, today
+from frappe.utils import format_time, now_datetime, to_timedelta, today
 
 warnings.filterwarnings("ignore", category=FutureWarning, message=r".*estimate.*")
 warnings.filterwarnings("ignore", category=FutureWarning, module=r".*insightface.*")
@@ -243,6 +243,28 @@ def get_employee_today_logs(employee):
         return []
 
 
+def is_out_allowed(gate_settings):
+    try:
+        if not gate_settings or not gate_settings.out_time:
+            return True, None
+
+        out_td = to_timedelta(gate_settings.out_time)
+        if not out_td:
+            return True, None
+
+        now_td = to_timedelta(now_datetime().time())
+        if now_td < out_td:
+            try:
+                time_display = format_time(str(out_td), "hh:mm a")
+            except Exception:
+                time_display = str(out_td)
+            return False, time_display
+        return True, None
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "Face Detection: is_out_allowed error")
+        return True, None
+
+
 def check_today_attendance_status(employee):
     try:
         logs = get_employee_today_logs(employee)
@@ -250,7 +272,9 @@ def check_today_attendance_status(employee):
         has_out = any(l.log_type == "OUT" for l in logs)
 
         gate_settings = frappe.get_single("Gate Face Punching")
-        kiosk_mode = (gate_settings.mode or "").strip().upper() if gate_settings else ""
+        is_auto_detect = bool(gate_settings and gate_settings.auto_detect)
+        kiosk_mode = (gate_settings.mode or "").strip().upper() if (gate_settings and not is_auto_detect) else ""
+        out_allowed, allowed_time = is_out_allowed(gate_settings)
 
         if has_in and has_out:
             return {
@@ -262,10 +286,17 @@ def check_today_attendance_status(employee):
 
         if kiosk_mode == "IN":
             if has_in:
+                msg = (
+                    _("Already today IN log created. OUT entry is allowed after {0}").format(allowed_time)
+                    if not out_allowed
+                    else _("Already today IN log created")
+                )
                 return {
                     "completed": True,
                     "next_action": None,
-                    "message": _("Already today IN log created"),
+                    "out_time_blocked": not out_allowed,
+                    "allowed_time": allowed_time if not out_allowed else None,
+                    "message": msg,
                     "logs_count": len(logs),
                 }
             return {
@@ -283,6 +314,20 @@ def check_today_attendance_status(employee):
                     "message": _("Already today OUT log created"),
                     "logs_count": len(logs),
                 }
+            if not out_allowed:
+                msg = (
+                    _("Already today IN log created. OUT entry is allowed after {0}").format(allowed_time)
+                    if has_in
+                    else _("OUT entry is allowed after {0}").format(allowed_time)
+                )
+                return {
+                    "completed": True,
+                    "next_action": None,
+                    "out_time_blocked": True,
+                    "allowed_time": allowed_time,
+                    "message": msg,
+                    "logs_count": len(logs),
+                }
             return {
                 "completed": False,
                 "next_action": "OUT",
@@ -291,6 +336,15 @@ def check_today_attendance_status(employee):
             }
 
         if has_in:
+            if not out_allowed:
+                return {
+                    "completed": True,
+                    "next_action": None,
+                    "out_time_blocked": True,
+                    "allowed_time": allowed_time,
+                    "message": _("Already today IN log created. OUT entry is allowed after {0}").format(allowed_time),
+                    "logs_count": len(logs),
+                }
             return {
                 "completed": False,
                 "next_action": "OUT",
@@ -442,6 +496,8 @@ def identify_employee(image_data):
                 "employee_name": employee_doc.employee_name or matched_employee,
                 "similarity": round(match["similarity"], 4),
                 "already_completed": True,
+                "out_time_blocked": status.get("out_time_blocked", False),
+                "allowed_time": status.get("allowed_time"),
                 "message": status.get("message") or _("Already today IN and OUT log created"),
                 "auto_action": None,
             }
@@ -502,6 +558,12 @@ def confirm_attendance(confirmation_token, log_type):
         status = check_today_attendance_status(employee)
         if status.get("completed"):
             frappe.throw(status.get("message") or _("Already today IN and OUT log created"))
+
+        if log_type == "OUT":
+            gate_settings = frappe.get_single("Gate Face Punching")
+            out_allowed, allowed_time = is_out_allowed(gate_settings)
+            if not out_allowed:
+                frappe.throw(_("Already today IN log created. OUT entry is allowed after {0}").format(allowed_time))
 
         log_record = record_attendance_log(
             employee=employee,
@@ -572,6 +634,8 @@ def mobile_face_checkin(image_data=None, log_type=None, employee=None, probe_emb
                 "status": "warning",
                 "ok": False,
                 "already_completed": True,
+                "out_time_blocked": status.get("out_time_blocked", False),
+                "allowed_time": status.get("allowed_time"),
                 "message": status.get("message") or _("Already today IN and OUT log created"),
                 "employee": matched_employee,
                 "employee_name": employee_doc.employee_name or matched_employee,
@@ -580,6 +644,19 @@ def mobile_face_checkin(image_data=None, log_type=None, employee=None, probe_emb
         final_log_type = (log_type or "").upper()
         if final_log_type not in ("IN", "OUT"):
             final_log_type = status.get("next_action") or "IN"
+
+        if final_log_type == "OUT":
+            gate_settings = frappe.get_single("Gate Face Punching")
+            out_allowed, allowed_time = is_out_allowed(gate_settings)
+            if not out_allowed:
+                return {
+                    "status": "warning",
+                    "ok": False,
+                    "already_completed": True,
+                    "message": _("Already today IN log created. OUT entry is allowed after {0}").format(allowed_time),
+                    "employee": matched_employee,
+                    "employee_name": employee_doc.employee_name or matched_employee,
+                }
 
         log_record = record_attendance_log(
             employee=matched_employee,

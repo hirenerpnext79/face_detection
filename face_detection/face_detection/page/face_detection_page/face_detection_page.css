@@ -276,6 +276,11 @@ body[data-route="face-detection-page"] {
     border: 1.5px solid #f59e0b;
     color: #92400e;
 }
+.fa-punch-danger {
+    background: #fef2f2;
+    border: 2px solid #ef4444;
+    color: #991b1b;
+}
 [data-theme="dark"] .fa-punch-in {
     background: #064e3b;
     border-color: #059669;
@@ -290,6 +295,11 @@ body[data-route="face-detection-page"] {
     background: #78350f;
     border-color: #d97706;
     color: #fef3c7;
+}
+[data-theme="dark"] .fa-punch-danger {
+    background: #450a0a;
+    border-color: #ef4444;
+    color: #fecaca;
 }
 .fa-punch-type-badge {
     padding: 2px 7px;
@@ -311,6 +321,10 @@ body[data-route="face-detection-page"] {
     background: #f59e0b;
     color: #ffffff;
 }
+.fa-punch-danger .fa-punch-type-badge {
+    background: #ef4444;
+    color: #ffffff;
+}
 .fa-punch-info {
     display: flex;
     flex-direction: column;
@@ -325,6 +339,17 @@ body[data-route="face-detection-page"] {
 .fa-punch-meta {
     font-size: 11px;
     opacity: 0.85;
+}
+.fa-out-time-highlight {
+    color: #dc2626;
+    font-size: 15px;
+    font-weight: 800;
+    line-height: 1.35;
+    margin-top: 3px;
+    letter-spacing: 0.02em;
+}
+[data-theme="dark"] .fa-out-time-highlight {
+    color: #f87171;
 }
 
 .fa-card {

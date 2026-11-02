@@ -611,6 +611,7 @@ frappe.pages["hns-face-detection-page"].on_page_load = function (wrapper) {
     $(wrapper).on("show", function () {
         window.scrollTo(0, 0);
         $(wrapper).find(".page-head, .page-title, .title-area, .title-text").remove();
+        $(wrapper).show();
         if (!stream) {
             initCamera();
         }
@@ -629,6 +630,22 @@ frappe.pages["hns-face-detection-page"].on_page_load = function (wrapper) {
         if (stream) {
             stream.getTracks().forEach(track => track.stop());
             stream = null;
+        }
+        $(wrapper).hide();
+    });
+
+    frappe.router.on("change", () => {
+        if (frappe.get_route_str() !== "hns-face-detection-page") {
+            $(wrapper).hide();
+            stopAutoScan();
+            if (logRefreshTimer) {
+                clearInterval(logRefreshTimer);
+                logRefreshTimer = null;
+            }
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+                stream = null;
+            }
         }
     });
 };

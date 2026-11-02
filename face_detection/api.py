@@ -764,11 +764,10 @@ def mobile_enroll_face(employee, image_data, re_enroll=0):
         raise
 
 
-@frappe.whitelist()
+@frappe.whitelist(allow_guest=True)
 def get_today_attendance(employee=None):
     try:
-        _require_login()
-        if not employee and frappe.session.user != "Administrator":
+        if frappe.session.user != "Guest" and not employee and frappe.session.user != "Administrator":
             employee = frappe.db.get_value("Employee", {"user_id": frappe.session.user}, "name")
 
         today_start = today() + " 00:00:00"

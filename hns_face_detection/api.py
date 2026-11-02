@@ -30,7 +30,8 @@ def _require_login():
 
 
 def _require_enrollment_role():
-    _require_login()
+    if frappe.session.user == "Guest":
+        return
     user_roles = set(frappe.get_roles(frappe.session.user))
     if not ALLOWED_ENROLLMENT_ROLES.intersection(user_roles):
         frappe.throw("Only HR Manager or System Manager can enroll face profiles.", frappe.PermissionError)
@@ -44,12 +45,23 @@ def _get_face_app():
             _face_app = FaceAnalysis(
                 name="buffalo_l",
                 providers=["CPUExecutionProvider"],
+                allowed_modules=["detection", "recognition"],
             )
             _face_app.prepare(ctx_id=-1, det_size=(640, 640))
         except Exception:
             frappe.log_error(frappe.get_traceback(), "HNS Face Detection: model initialization failed")
             frappe.throw("Face model could not be initialized. Verify InsightFace installation and server logs.")
     return _face_app
+
+
+@frappe.whitelist(allow_guest=True)
+def warmup_model():
+    try:
+        _get_face_app()
+        return {"ok": True, "message": "Face model ready."}
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "HNS Face Detection: warmup failed")
+        return {"ok": False, "message": "Model warmup failed."}
 
 
 def _decode_image(image_data):
@@ -102,40 +114,6 @@ def _decode_image(image_data):
     return image
 
 
-def load_image_from_file(image_value):
-    try:
-        if not image_value:
-            return None
-
-        clean_path = image_value.lstrip("/")
-        candidate_paths = [
-            frappe.get_site_path("public", clean_path),
-            frappe.get_site_path(clean_path),
-            frappe.get_site_path("public", "files", os.path.basename(image_value)),
-            frappe.get_site_path("private", "files", os.path.basename(image_value)),
-        ]
-
-        for path in candidate_paths:
-            if os.path.exists(path):
-                img = cv2.imread(path)
-                if img is not None:
-                    return img
-
-        file_doc = frappe.db.get_value("File", {"file_url": image_value}, ["file_name", "is_private"], as_dict=True)
-        if file_doc:
-            folder = "private/files" if file_doc.is_private else "public/files"
-            db_path = frappe.get_site_path(folder, file_doc.file_name)
-            if os.path.exists(db_path):
-                img = cv2.imread(db_path)
-                if img is not None:
-                    return img
-
-        return None
-    except Exception:
-        frappe.log_error(frappe.get_traceback(), "HNS Face Detection: load_image_from_file error")
-        return None
-
-
 def _extract_embedding_from_array(image):
     faces = _get_face_app().get(image)
     if not faces:
@@ -164,13 +142,7 @@ def extract_embedding_from_file_or_data(image_input):
     if not image_input or not isinstance(image_input, str):
         frappe.throw("Valid image input is required.")
 
-    if image_input.startswith("data:") or len(image_input) > 500:
-        image = _decode_image(image_input)
-    else:
-        image = load_image_from_file(image_input)
-        if image is None:
-            frappe.throw(f"Could not load image from file {image_input}")
-
+    image = _decode_image(image_input)
     return _extract_embedding_from_array(image)
 
 
@@ -412,7 +384,7 @@ def record_attendance_log(employee, log_type, similarity=None):
         raise
 
 
-@frappe.whitelist()
+@frappe.whitelist(allow_guest=True)
 def enroll_face(employee, image_data, re_enroll=0):
     try:
         _require_enrollment_role()
@@ -433,6 +405,7 @@ def enroll_face(employee, image_data, re_enroll=0):
         if existing_profile and existing_profile.is_enrolled and existing_profile.embedding and not frappe.utils.cint(re_enroll):
             return {
                 "ok": False,
+                "status": "warning",
                 "already_enrolled": True,
                 "employee": employee,
                 "employee_name": employee_doc.employee_name or employee,
@@ -448,7 +421,7 @@ def enroll_face(employee, image_data, re_enroll=0):
             "active": 1,
             "is_enrolled": 1,
             "embedding": json.dumps(embedding.tolist(), separators=(",", ":")),
-            "enrolled_by": frappe.session.user,
+            "enrolled_by": frappe.session.user if frappe.session.user != "Guest" else "Kiosk Enrollment",
             "enrolled_on": now_datetime(),
         }
 
@@ -463,39 +436,59 @@ def enroll_face(employee, image_data, re_enroll=0):
         frappe.db.commit()
         return {
             "ok": True,
+            "status": "success",
             "employee": employee,
             "employee_name": employee_doc.employee_name or employee,
             "message": f"Face profile enrolled successfully for {employee}."
         }
-    except frappe.ValidationError:
-        raise
+    except frappe.ValidationError as e:
+        return {
+            "ok": False,
+            "status": "error",
+            "message": _get_clean_error_message(e),
+        }
     except Exception:
         frappe.log_error(frappe.get_traceback(), "HNS Face Detection: enroll_face failed")
-        raise
+        return {
+            "ok": False,
+            "status": "error",
+            "message": "Enrollment failed. Please try again.",
+        }
 
 
-@frappe.whitelist()
+@frappe.whitelist(allow_guest=True)
 def identify_employee(image_data):
     try:
-        _require_login()
         probe = extract_embedding_from_file_or_data(image_data)
         match = _find_best_match(probe)
 
         if not match:
-            frappe.throw("No enrolled employee matched confidently. Please adjust lighting or verify enrollment.")
+            return {
+                "ok": False,
+                "matched": False,
+                "message": "No enrolled employee matched confidently. Please adjust lighting or verify enrollment.",
+            }
 
         matched_employee = match["employee"]
         employee_doc = frappe.get_doc("Employee", matched_employee)
         if employee_doc.status and employee_doc.status != "Active":
-            frappe.throw("The matched employee is not active.")
+            return {
+                "ok": False,
+                "matched": False,
+                "message": "The matched employee is not active.",
+            }
 
         status = check_today_attendance_status(matched_employee)
         if status.get("completed"):
             return {
+                "ok": False,
+                "matched": True,
+                "already_completed": True,
                 "employee": matched_employee,
                 "employee_name": employee_doc.employee_name or matched_employee,
+                "department": employee_doc.department or "",
+                "designation": employee_doc.designation or "",
                 "similarity": round(match["similarity"], 4),
-                "already_completed": True,
                 "out_time_blocked": status.get("out_time_blocked", False),
                 "allowed_time": status.get("allowed_time"),
                 "message": status.get("message") or _("Already today IN and OUT log created"),
@@ -513,26 +506,38 @@ def identify_employee(image_data):
         auto_action = status.get("next_action") or "IN"
 
         return {
+            "ok": True,
+            "matched": True,
+            "already_completed": False,
             "employee": matched_employee,
             "employee_name": employee_doc.employee_name or matched_employee,
+            "department": employee_doc.department or "",
+            "designation": employee_doc.designation or "",
             "similarity": round(match["similarity"], 4),
             "confirmation_token": token,
             "expires_in_seconds": CONFIRMATION_TTL_SECONDS,
             "auto_action": auto_action,
-            "already_completed": False,
         }
-    except frappe.ValidationError:
-        raise
+    except frappe.ValidationError as e:
+        return {
+            "ok": False,
+            "matched": False,
+            "message": _get_clean_error_message(e),
+        }
     except Exception:
         frappe.log_error(frappe.get_traceback(), "HNS Face Detection: identify_employee failed")
-        raise
+        return {
+            "ok": False,
+            "matched": False,
+            "message": "Face identification failed. Please try again.",
+        }
 
 
-@frappe.whitelist()
+@frappe.whitelist(allow_guest=True)
 def confirm_attendance(confirmation_token, log_type):
     try:
-        _require_login()
-        if log_type not in ("IN", "OUT"):
+        final_log_type = (log_type or "").upper()
+        if final_log_type not in ("IN", "OUT"):
             frappe.throw("log_type must be IN or OUT.")
 
         if not isinstance(confirmation_token, str) or not re.fullmatch(r"[a-f0-9]{32}", confirmation_token):
@@ -543,7 +548,8 @@ def confirm_attendance(confirmation_token, log_type):
         if not payload:
             frappe.throw("Confirmation expired or already used. Identify the employee again.")
 
-        if payload.get("user") != frappe.session.user:
+        token_user = payload.get("user")
+        if token_user != frappe.session.user and token_user != "Guest" and frappe.session.user != "Guest":
             frappe.throw("This confirmation belongs to another user.", frappe.PermissionError)
 
         frappe.cache().delete_value(cache_key)
@@ -557,288 +563,58 @@ def confirm_attendance(confirmation_token, log_type):
 
         status = check_today_attendance_status(employee)
         if status.get("completed"):
-            frappe.throw(status.get("message") or _("Already today IN and OUT log created"))
-
-        if log_type == "OUT":
-            gate_settings = frappe.get_single("Hns Gate Face Punching")
-            out_allowed, allowed_time = is_out_allowed(gate_settings)
-            if not out_allowed:
-                frappe.throw(_("Already today IN log created. OUT entry is allowed after {0}").format(allowed_time))
-
-        log_record = record_attendance_log(
-            employee=employee,
-            log_type=log_type,
-            similarity=payload.get("similarity"),
-        )
-
-        return {
-            "ok": True,
-            "name": log_record.name,
-            "employee": employee,
-            "employee_name": employee_doc.employee_name or employee,
-            "log_type": log_type,
-            "message": f"Attendance recorded for {employee_doc.employee_name or employee} ({log_type}).",
-        }
-    except frappe.ValidationError:
-        raise
-    except Exception:
-        frappe.log_error(frappe.get_traceback(), "HNS Face Detection: confirm_attendance failed")
-        raise
-
-
-@frappe.whitelist(allow_guest=True)
-def mobile_face_checkin(image_data=None, log_type=None, employee=None, probe_embedding=None, similarity_score=None, **kwargs):
-    try:
-        matched_employee = None
-        matched_score = 0.0
-
-        if probe_embedding is not None and similarity_score is not None and employee:
-            matched_employee = employee
-            matched_score = float(similarity_score)
-        else:
-            if not image_data:
-                frappe.throw("Image data is required.")
-
-            probe_vec = extract_embedding_from_file_or_data(image_data)
-
-            if employee:
-                profile = frappe.db.get_value(
-                    "Hns Employee Face Profile",
-                    {"employee": employee, "active": 1},
-                    ["name", "employee", "embedding"],
-                    as_dict=True,
-                )
-                if not profile or not profile.embedding:
-                    frappe.throw(f"No active face profile enrolled for employee {employee}.")
-
-                candidate_vec = np.asarray(json.loads(profile.embedding), dtype=np.float32)
-                score = _cosine_similarity(probe_vec, candidate_vec)
-                if score < MATCH_THRESHOLD:
-                    frappe.throw("Face verification failed. Face does not match the employee.")
-                matched_employee = employee
-                matched_score = score
-            else:
-                match = _find_best_match(probe_vec)
-                if not match:
-                    frappe.throw("No enrolled employee matched confidently. Please verify lighting and camera positioning.")
-                matched_employee = match["employee"]
-                matched_score = match["similarity"]
-
-        employee_doc = frappe.get_doc("Employee", matched_employee)
-        if employee_doc.status and employee_doc.status != "Active":
-            frappe.throw(f"Employee {matched_employee} is not active.")
-
-        status = check_today_attendance_status(matched_employee)
-        if status.get("completed"):
             return {
-                "status": "warning",
                 "ok": False,
+                "status": "warning",
                 "already_completed": True,
-                "out_time_blocked": status.get("out_time_blocked", False),
-                "allowed_time": status.get("allowed_time"),
                 "message": status.get("message") or _("Already today IN and OUT log created"),
-                "employee": matched_employee,
-                "employee_name": employee_doc.employee_name or matched_employee,
+                "employee": employee,
+                "employee_name": employee_doc.employee_name or employee,
             }
-
-        final_log_type = (log_type or "").upper()
-        if final_log_type not in ("IN", "OUT"):
-            final_log_type = status.get("next_action") or "IN"
 
         if final_log_type == "OUT":
             gate_settings = frappe.get_single("Hns Gate Face Punching")
             out_allowed, allowed_time = is_out_allowed(gate_settings)
             if not out_allowed:
                 return {
-                    "status": "warning",
                     "ok": False,
+                    "status": "warning",
                     "already_completed": True,
                     "message": _("Already today IN log created. OUT entry is allowed after {0}").format(allowed_time),
-                    "employee": matched_employee,
-                    "employee_name": employee_doc.employee_name or matched_employee,
+                    "employee": employee,
+                    "employee_name": employee_doc.employee_name or employee,
                 }
 
         log_record = record_attendance_log(
-            employee=matched_employee,
+            employee=employee,
             log_type=final_log_type,
-            similarity=round(float(matched_score), 4),
+            similarity=payload.get("similarity"),
         )
 
         return {
-            "status": "success",
             "ok": True,
-            "message": f"Successfully marked {final_log_type} for {employee_doc.employee_name or matched_employee}",
-            "employee": matched_employee,
-            "employee_name": employee_doc.employee_name or matched_employee,
+            "status": "success",
+            "name": log_record.name,
+            "employee": employee,
+            "employee_name": employee_doc.employee_name or employee,
             "log_type": final_log_type,
             "time": str(log_record.time),
-            "similarity": round(float(matched_score), 4),
-            "log_name": log_record.name,
+            "similarity": round(float(payload.get("similarity") or 0.0), 4),
+            "message": f"Successfully marked {final_log_type} for {employee_doc.employee_name or employee}",
         }
     except frappe.ValidationError as e:
         return {
-            "status": "error",
             "ok": False,
+            "status": "error",
             "message": _get_clean_error_message(e),
         }
     except Exception:
-        frappe.log_error(frappe.get_traceback(), "HNS Face Detection: mobile_face_checkin failed")
+        frappe.log_error(frappe.get_traceback(), "HNS Face Detection: confirm_attendance failed")
         return {
-            "status": "error",
             "ok": False,
-            "message": "Face checkin failed. Please try again.",
+            "status": "error",
+            "message": "Failed to record attendance. Please try again.",
         }
-
-
-@frappe.whitelist(allow_guest=True)
-def mobile_detect_and_verify(image_data, employee=None):
-    try:
-        if not image_data:
-            frappe.throw("Image data is required.")
-
-        probe_embedding = extract_embedding_from_file_or_data(image_data)
-
-        if employee:
-            profile = frappe.db.get_value(
-                "Hns Employee Face Profile",
-                {"employee": employee, "active": 1},
-                ["name", "employee", "embedding"],
-                as_dict=True,
-            )
-            if not profile or not profile.embedding:
-                return {
-                    "matched": False,
-                    "employee": employee,
-                    "similarity": 0.0,
-                    "message": f"No active face profile enrolled for {employee}.",
-                    "threshold": MATCH_THRESHOLD,
-                }
-
-            candidate_vec = np.asarray(json.loads(profile.embedding), dtype=np.float32)
-            score = _cosine_similarity(probe_embedding, candidate_vec)
-            matched = bool(score >= MATCH_THRESHOLD)
-            employee_doc = frappe.get_doc("Employee", employee)
-            employee_name = employee_doc.employee_name or employee
-            auto_action = get_auto_log_type(employee)
-            return {
-                "matched": matched,
-                "employee": employee,
-                "employee_name": employee_name,
-                "department": employee_doc.department or "",
-                "designation": employee_doc.designation or "",
-                "similarity": round(float(score), 4),
-                "threshold": MATCH_THRESHOLD,
-                "auto_action": auto_action,
-                "probe_embedding": probe_embedding.tolist(),
-            }
-
-        match = _find_best_match(probe_embedding)
-        if not match:
-            return {
-                "matched": False,
-                "message": "No enrolled employee matched above threshold.",
-                "threshold": MATCH_THRESHOLD,
-            }
-
-        matched_employee = match["employee"]
-        employee_doc = frappe.get_doc("Employee", matched_employee)
-        employee_name = employee_doc.employee_name or matched_employee
-        auto_action = get_auto_log_type(matched_employee)
-        return {
-            "matched": True,
-            "employee": matched_employee,
-            "employee_name": employee_name,
-            "department": employee_doc.department or "",
-            "designation": employee_doc.designation or "",
-            "similarity": round(float(match["similarity"]), 4),
-            "threshold": MATCH_THRESHOLD,
-            "auto_action": auto_action,
-            "probe_embedding": probe_embedding.tolist(),
-        }
-    except frappe.ValidationError as e:
-        return {
-            "matched": False,
-            "message": _get_clean_error_message(e),
-            "threshold": MATCH_THRESHOLD,
-        }
-    except Exception:
-        frappe.log_error(frappe.get_traceback(), "HNS Face Detection: mobile_detect_and_verify failed")
-        return {
-            "matched": False,
-            "message": "Face detection failed. Please try again.",
-            "threshold": MATCH_THRESHOLD,
-        }
-
-
-@frappe.whitelist(allow_guest=True)
-def mobile_enroll_face(employee, image_data, re_enroll=0):
-    try:
-        if not employee or not frappe.db.exists("Employee", employee):
-            frappe.throw("A valid Employee ID is required.")
-
-        if frappe.session.user != "Guest":
-            has_enroll_role = bool(ALLOWED_ENROLLMENT_ROLES.intersection(set(frappe.get_roles(frappe.session.user))))
-            linked_employee = frappe.db.get_value("Employee", {"user_id": frappe.session.user}, "name")
-            is_self = bool(linked_employee and linked_employee == employee)
-
-            if not has_enroll_role and not is_self:
-                frappe.throw("Only HR Manager, System Manager, or the employee can enroll face profiles.", frappe.PermissionError)
-
-        employee_doc = frappe.get_doc("Employee", employee)
-        if employee_doc.status and employee_doc.status != "Active":
-            frappe.throw("Only active employees can be enrolled.")
-
-        existing_profile = frappe.db.get_value(
-            "Hns Employee Face Profile",
-            {"employee": employee},
-            ["name", "is_enrolled", "embedding"],
-            as_dict=True,
-        )
-
-        if existing_profile and existing_profile.is_enrolled and existing_profile.embedding and not frappe.utils.cint(re_enroll):
-            return {
-                "status": "error",
-                "ok": False,
-                "already_enrolled": True,
-                "employee": employee,
-                "employee_name": employee_doc.employee_name or employee,
-                "message": f"Face profile is already enrolled for this employee ({employee}).",
-            }
-
-        embedding = extract_embedding_from_file_or_data(image_data)
-        profile_name = existing_profile.name if existing_profile else None
-
-        values = {
-            "employee": employee,
-            "employee_name": employee_doc.employee_name or employee,
-            "active": 1,
-            "is_enrolled": 1,
-            "embedding": json.dumps(embedding.tolist(), separators=(",", ":")),
-            "enrolled_by": frappe.session.user if frappe.session.user != "Guest" else "Mobile Enrollment",
-            "enrolled_on": now_datetime(),
-        }
-
-        if profile_name:
-            profile = frappe.get_doc("Hns Employee Face Profile", profile_name)
-            profile.update(values)
-            profile.save(ignore_permissions=True)
-        else:
-            profile = frappe.get_doc({"doctype": "Hns Employee Face Profile", **values})
-            profile.insert(ignore_permissions=True)
-
-        frappe.db.commit()
-        return {
-            "status": "success",
-            "ok": True,
-            "employee": employee,
-            "employee_name": employee_doc.employee_name or employee,
-            "message": "Face profile enrolled successfully."
-        }
-    except frappe.ValidationError:
-        raise
-    except Exception:
-        frappe.log_error(frappe.get_traceback(), "HNS Face Detection: mobile_enroll_face failed")
-        raise
 
 
 @frappe.whitelist(allow_guest=True)
@@ -906,10 +682,9 @@ def get_face_profile_status(employee=None):
         raise
 
 
-@frappe.whitelist()
+@frappe.whitelist(allow_guest=True)
 def get_kiosk_settings():
     try:
-        _require_login()
         settings = frappe.get_single("Hns Gate Face Punching")
         return {
             "auto_detect": frappe.utils.cint(settings.auto_detect),
@@ -999,7 +774,3 @@ def _get_clean_error_message(e):
     elif "PermissionError" in repr(e) or "Does not have permission" in error_msg:
         return "Permission Denied: You do not have access to this document or printer."
     return error_msg
-
-
-
-

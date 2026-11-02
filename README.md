@@ -31,7 +31,7 @@ Previously, `EmployeeFaceProfile.validate()` threw an unhandled validation error
 ## Anti-Spoofing & Liveness Detection (Real Face & Motion Verification)
 
 To prevent proxy attendance using mobile screen photos, printed pictures, or paper masks:
-1. **InsightFace Liveness Neural Network**: Backend API initializes `FaceAnalysis` with official `addons=["liveness"]`. During attendance verification (`identify_employee`, `mobile_face_checkin`), each detected face is scored for true human 3D liveness. Screen replays and 2D photo prints are automatically rejected with a clear message.
+1. **InsightFace Liveness Neural Network**: Backend API initializes `FaceAnalysis` with official `addons=["liveness"]`. During attendance verification (`identify_employee`), each detected face is scored for true human 3D liveness. Screen replays and 2D photo prints are automatically rejected with a clear message.
 2. **Kiosk Live Motion Verification**: The kiosk scanner analyzes pixel movement between consecutive frames. Static photos or frozen cameras trigger a *"Live face movement required"* prompt and block attendance until natural motion is observed.
 3. **Safe Photo Enrollment**: High-resolution file uploads and passport photos in `Employee.image` can still be enrolled by administrators without false rejection.
 
@@ -39,95 +39,76 @@ To prevent proxy attendance using mobile screen photos, printed pictures, or pap
 
 All endpoints are whitelisted under `hns_face_detection.api.*`.
 
-### 1. Mobile Face Check-in / Check-out
-Single-step facial recognition and check-in / check-out log storage.
+### 1. Face Identification (1:N Match)
+Identifies employee face from webcam or mobile frame, checks daily status, and issues a secure confirmation token.
 
-- **Endpoint**: `/api/method/hns_face_detection.api.mobile_face_checkin`
+- **Endpoint**: `/api/method/hns_face_detection.api.identify_employee`
 - **Method**: `POST`
-- **Headers**:
-  - `Content-Type: application/json`
-  - `Authorization: token <api_key>:<api_secret>` (or active session cookie)
 - **Parameters**:
-  | Field | Type | Description |
-  |---|---|---|
-  | `image_data` | String (Required) | Base64 encoded string or Data URL (`data:image/jpeg;base64,...`) |
-  | `log_type` | String (Optional) | `"IN"`, `"OUT"`, or `"AUTO"` / omit. When omitted or `"AUTO"`, toggles automatically based on today's last log |
-  | `employee` | String (Optional) | Specific Employee ID for 1:1 verification. If omitted, performs 1:N identification across all active profiles |
-  | `latitude` | Float (Optional) | GPS Latitude from mobile device |
-  | `longitude` | Float (Optional) | GPS Longitude from mobile device |
-  | `device_id` | String (Optional) | Device identifier (e.g. `"Samsung S23"`, `"Mobile-App"`) |
-
-- **Example Request**:
-```json
-{
-  "image_data": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD...",
-  "log_type": "AUTO",
-  "employee": "HR-EMP-00001",
-  "latitude": 12.9716,
-  "longitude": 77.5946,
-  "device_id": "Flutter-Mobile-App"
-}
-```
-
+  - `image_data`: Base64 string / Data URL (`data:image/jpeg;base64,...`)
 - **Example Response**:
 ```json
 {
   "message": {
-    "status": "success",
     "ok": true,
-    "message": "Successfully marked IN for Hiren Savaliya",
-    "employee": "HR-EMP-00001",
-    "employee_name": "Hiren Savaliya",
-    "log_type": "IN",
-    "time": "2026-10-28 10:25:30.123456",
-    "similarity": 0.8842,
-    "log_name": "FAL-2026-00001"
-  }
-}
-```
-
----
-
-### 2. Mobile Face Verification / Detection Preview
-Detects face and verifies identity without writing an attendance log.
-
-- **Endpoint**: `/api/method/hns_face_detection.api.mobile_detect_and_verify`
-- **Method**: `POST`
-- **Parameters**:
-  - `image_data`: Base64 string / Data URL
-  - `employee`: Optional Employee ID for 1:1 match
-- **Example Response**:
-```json
-{
-  "message": {
     "matched": true,
     "employee": "HR-EMP-00001",
     "employee_name": "Hiren Savaliya",
     "similarity": 0.8842,
-    "threshold": 0.45
+    "confirmation_token": "a1b2c3d4e5f60718293a4b5c6d7e8f90",
+    "auto_action": "IN",
+    "already_completed": false
   }
 }
 ```
 
 ---
 
-### 3. Mobile Face Profile Enrollment
-Enrolls or replaces an employee's face vector directly from mobile camera.
+### 2. Attendance Confirmation
+Confirms attendance using the issued confirmation token.
 
-- **Endpoint**: `/api/method/hns_face_detection.api.mobile_enroll_face`
+- **Endpoint**: `/api/method/hns_face_detection.api.confirm_attendance`
 - **Method**: `POST`
 - **Parameters**:
-  - `employee`: Employee ID
-  - `image_data`: Base64 string / Data URL
+  - `confirmation_token`: 32-character hexadecimal token
+  - `log_type`: `"IN"` or `"OUT"`
 - **Example Response**:
 ```json
 {
   "message": {
-    "status": "success",
     "ok": true,
+    "status": "success",
     "employee": "HR-EMP-00001",
     "employee_name": "Hiren Savaliya",
-    "message": "Face profile enrolled successfully."
+    "log_type": "IN",
+    "time": "2026-11-02 10:25:30.123456",
+    "similarity": 0.8842,
+    "name": "FAL-2026-00001",
+    "message": "Successfully marked IN for Hiren Savaliya"
+  }
+}
+```
+
+---
+
+### 3. Face Profile Enrollment
+Enrolls or replaces an employee's face vector.
+
+- **Endpoint**: `/api/method/hns_face_detection.api.enroll_face`
+- **Method**: `POST`
+- **Parameters**:
+  - `employee`: Employee ID
+  - `image_data`: Base64 string / Data URL
+  - `re_enroll`: 0 or 1
+- **Example Response**:
+```json
+{
+  "message": {
+    "ok": true,
+    "status": "success",
+    "employee": "HR-EMP-00001",
+    "employee_name": "Hiren Savaliya",
+    "message": "Face profile enrolled successfully for HR-EMP-00001."
   }
 }
 ```
@@ -191,7 +172,7 @@ A cross-platform Flutter mobile application is located in `face_detection_mobile
 
 ### Features
 1. **Live Camera Face Scanner**: Biometric oval viewfinder with front/rear camera toggle and auto-scan mode.
-2. **Real-time Checkin**: Captures face frame, converts to base64, and calls `/api/method/hns_face_detection.api.mobile_face_checkin`.
+2. **Real-time Verification**: Captures face frame, converts to base64, identifies employee via `hns_face_detection.api.identify_employee`, and confirms punch via `hns_face_detection.api.confirm_attendance`.
 3. **Smart Response Handling**:
    - **Success**: Displays employee name, badge (IN/OUT), and similarity percentage.
    - **Already Completed**: Informs user if both IN and OUT entries are already logged today.

@@ -37,12 +37,12 @@ To prevent proxy attendance using mobile screen photos, printed pictures, or pap
 
 ---
 
-All endpoints are whitelisted under `face_detection.api.*`.
+All endpoints are whitelisted under `hns_face_detection.api.*`.
 
 ### 1. Mobile Face Check-in / Check-out
 Single-step facial recognition and check-in / check-out log storage.
 
-- **Endpoint**: `/api/method/face_detection.api.mobile_face_checkin`
+- **Endpoint**: `/api/method/hns_face_detection.api.mobile_face_checkin`
 - **Method**: `POST`
 - **Headers**:
   - `Content-Type: application/json`
@@ -91,7 +91,7 @@ Single-step facial recognition and check-in / check-out log storage.
 ### 2. Mobile Face Verification / Detection Preview
 Detects face and verifies identity without writing an attendance log.
 
-- **Endpoint**: `/api/method/face_detection.api.mobile_detect_and_verify`
+- **Endpoint**: `/api/method/hns_face_detection.api.mobile_detect_and_verify`
 - **Method**: `POST`
 - **Parameters**:
   - `image_data`: Base64 string / Data URL
@@ -114,7 +114,7 @@ Detects face and verifies identity without writing an attendance log.
 ### 3. Mobile Face Profile Enrollment
 Enrolls or replaces an employee's face vector directly from mobile camera.
 
-- **Endpoint**: `/api/method/face_detection.api.mobile_enroll_face`
+- **Endpoint**: `/api/method/hns_face_detection.api.mobile_enroll_face`
 - **Method**: `POST`
 - **Parameters**:
   - `employee`: Employee ID
@@ -137,7 +137,7 @@ Enrolls or replaces an employee's face vector directly from mobile camera.
 ### 4. Today's Attendance & Next Action
 Fetches the employee's check-in / check-out history for today and the next expected action.
 
-- **Endpoint**: `/api/method/face_detection.api.get_today_attendance`
+- **Endpoint**: `/api/method/hns_face_detection.api.get_today_attendance`
 - **Method**: `POST`
 - **Parameters**:
   - `employee`: Optional Employee ID (defaults to session user's employee)
@@ -167,7 +167,7 @@ Fetches the employee's check-in / check-out history for today and the next expec
 ### 5. Profile Status Check
 Checks if an employee has an active enrolled face embedding.
 
-- **Endpoint**: `/api/method/face_detection.api.get_face_profile_status`
+- **Endpoint**: `/api/method/hns_face_detection.api.get_face_profile_status`
 - **Method**: `POST`
 - **Parameters**:
   - `employee`: Employee ID
@@ -191,7 +191,7 @@ A cross-platform Flutter mobile application is located in `face_detection_mobile
 
 ### Features
 1. **Live Camera Face Scanner**: Biometric oval viewfinder with front/rear camera toggle and auto-scan mode.
-2. **Real-time Checkin**: Captures face frame, converts to base64, and calls `/api/method/face_detection.api.mobile_face_checkin`.
+2. **Real-time Checkin**: Captures face frame, converts to base64, and calls `/api/method/hns_face_detection.api.mobile_face_checkin`.
 3. **Smart Response Handling**:
    - **Success**: Displays employee name, badge (IN/OUT), and similarity percentage.
    - **Already Completed**: Informs user if both IN and OUT entries are already logged today.

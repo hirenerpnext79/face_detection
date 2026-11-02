@@ -5,7 +5,7 @@ from frappe.utils import now_datetime
 from hns_face_detection.api import extract_embedding_from_file_or_data
 
 
-class EmployeeFaceProfile(Document):
+class HnsEmployeeFaceProfile(Document):
     def validate(self):
         try:
             self.validate_employee()

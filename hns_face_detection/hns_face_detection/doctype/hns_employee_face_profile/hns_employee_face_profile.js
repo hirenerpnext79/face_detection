@@ -1,4 +1,4 @@
-frappe.ui.form.on("Employee Face Profile", {
+frappe.ui.form.on("Hns Employee Face Profile", {
     refresh(frm) {
         update_enrollment_ui(frm);
     }

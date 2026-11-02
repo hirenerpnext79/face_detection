@@ -5,5 +5,5 @@
 from frappe.tests.utils import FrappeTestCase
 
 
-class TestGateFacePunching(FrappeTestCase):
+class TestHnsGateFacePunching(FrappeTestCase):
 	pass

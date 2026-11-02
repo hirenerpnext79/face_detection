@@ -1,6 +1,6 @@
 {
  "charts": [],
- "content": "[{\"id\":\"gcphmRe9YU\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b>Face Detection</b></span>\",\"col\":12}},{\"id\":\"sc1\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Live Face Scanner\",\"col\":4}},{\"id\":\"sc2\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Employee Face Profile\",\"col\":4}},{\"id\":\"sc3\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"HNS Face Detection Log\",\"col\":4}},{\"id\":\"cs-vMnhvv3\",\"type\":\"card\",\"data\":{\"card_name\":\"Settings\",\"col\":4}}]",
+ "content": "[{\"id\": \"gcphmRe9YU\", \"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h4\\\"><b>HNS Face Detection</b></span>\", \"col\": 12}}, {\"id\": \"sc1\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Live Face Scanner\", \"col\": 4}}, {\"id\": \"sc2\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Employee Face Profile\", \"col\": 4}}, {\"id\": \"sc3\", \"type\": \"shortcut\", \"data\": {\"shortcut_name\": \"Face Detection Log\", \"col\": 4}}, {\"id\": \"cs-vMnhvv3\", \"type\": \"card\", \"data\": {\"card_name\": \"Settings\", \"col\": 4}}]",
  "creation": "2026-10-28 14:30:41.862192",
  "custom_blocks": [],
  "docstatus": 0,
@@ -26,13 +26,13 @@
    "is_query_report": 0,
    "label": "Gate Face Punching",
    "link_count": 0,
-   "link_to": "Gate Face Punching",
+   "link_to": "Hns Gate Face Punching",
    "link_type": "DocType",
    "onboard": 0,
    "type": "Link"
   }
  ],
- "modified": "2026-10-31 17:47:02.900073",
+ "modified": "2026-11-02 12:59:55.440331",
  "modified_by": "Administrator",
  "module": "HNS Face Detection",
  "name": "HNS Face Detection",
@@ -55,14 +55,14 @@
    "color": "Blue",
    "doc_view": "",
    "label": "Employee Face Profile",
-   "link_to": "Employee Face Profile",
+   "link_to": "Hns Employee Face Profile",
    "type": "DocType"
   },
   {
    "color": "Orange",
    "doc_view": "",
-   "label": "HNS Face Detection Log",
-   "link_to": "HNS Face Detection Log",
+   "label": "Face Detection Log",
+   "link_to": "Hns Face Detection Log",
    "type": "DocType"
   }
  ],

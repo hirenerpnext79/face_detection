@@ -3,7 +3,7 @@ import frappe
 from frappe.tests.utils import FrappeTestCase
 
 
-class TestEmployeeFaceProfile(FrappeTestCase):
+class TestHnsEmployeeFaceProfile(FrappeTestCase):
     def test_save_profile_without_embedding_allowed(self):
         emp_id = self._get_or_create_test_employee("TEST-SAVENOFACE-001")
         if frappe.db.exists("Employee Face Profile", emp_id):

@@ -185,7 +185,7 @@ def _cosine_similarity(left, right):
 
 def _find_best_match(probe_embedding):
     profiles = frappe.get_all(
-        "Employee Face Profile",
+        "Hns Employee Face Profile",
         filters={"active": 1},
         fields=["name", "employee", "embedding"],
         limit_page_length=10000,
@@ -218,7 +218,7 @@ def get_employee_today_logs(employee):
     try:
         today_date = today()
         logs = frappe.db.get_all(
-            "HNS Face Detection Log",
+            "Hns Face Detection Log",
             filters={
                 "employee": employee,
                 "time": [">=", f"{today_date} 00:00:00"]
@@ -271,7 +271,7 @@ def check_today_attendance_status(employee):
         has_in = any(l.log_type == "IN" for l in logs)
         has_out = any(l.log_type == "OUT" for l in logs)
 
-        gate_settings = frappe.get_single("Gate Face Punching")
+        gate_settings = frappe.get_single("Hns Gate Face Punching")
         is_auto_detect = bool(gate_settings and gate_settings.auto_detect)
         kiosk_mode = (gate_settings.mode or "").strip().upper() if (gate_settings and not is_auto_detect) else ""
         out_allowed, allowed_time = is_out_allowed(gate_settings)
@@ -381,11 +381,11 @@ def record_attendance_log(employee, log_type, similarity=None):
     try:
         checkin_time = now_datetime()
         employee_name = frappe.db.get_value("Employee", employee, "employee_name") or employee
-        gate_settings = frappe.get_single("Gate Face Punching")
+        gate_settings = frappe.get_single("Hns Gate Face Punching")
         punch_category = gate_settings.punch_category if gate_settings and gate_settings.punch_category else "Attendance"
 
         log_doc = frappe.get_doc({
-            "doctype": "HNS Face Detection Log",
+            "doctype": "Hns Face Detection Log",
             "employee": employee,
             "employee_name": employee_name,
             "log_type": log_type,
@@ -424,7 +424,7 @@ def enroll_face(employee, image_data, re_enroll=0):
             frappe.throw("Only active employees can be enrolled.")
 
         existing_profile = frappe.db.get_value(
-            "Employee Face Profile",
+            "Hns Employee Face Profile",
             {"employee": employee},
             ["name", "is_enrolled", "embedding"],
             as_dict=True,
@@ -453,11 +453,11 @@ def enroll_face(employee, image_data, re_enroll=0):
         }
 
         if profile_name:
-            profile = frappe.get_doc("Employee Face Profile", profile_name)
+            profile = frappe.get_doc("Hns Employee Face Profile", profile_name)
             profile.update(values)
             profile.save(ignore_permissions=True)
         else:
-            profile = frappe.get_doc({"doctype": "Employee Face Profile", **values})
+            profile = frappe.get_doc({"doctype": "Hns Employee Face Profile", **values})
             profile.insert(ignore_permissions=True)
 
         frappe.db.commit()
@@ -560,7 +560,7 @@ def confirm_attendance(confirmation_token, log_type):
             frappe.throw(status.get("message") or _("Already today IN and OUT log created"))
 
         if log_type == "OUT":
-            gate_settings = frappe.get_single("Gate Face Punching")
+            gate_settings = frappe.get_single("Hns Gate Face Punching")
             out_allowed, allowed_time = is_out_allowed(gate_settings)
             if not out_allowed:
                 frappe.throw(_("Already today IN log created. OUT entry is allowed after {0}").format(allowed_time))
@@ -603,7 +603,7 @@ def mobile_face_checkin(image_data=None, log_type=None, employee=None, probe_emb
 
             if employee:
                 profile = frappe.db.get_value(
-                    "Employee Face Profile",
+                    "Hns Employee Face Profile",
                     {"employee": employee, "active": 1},
                     ["name", "employee", "embedding"],
                     as_dict=True,
@@ -646,7 +646,7 @@ def mobile_face_checkin(image_data=None, log_type=None, employee=None, probe_emb
             final_log_type = status.get("next_action") or "IN"
 
         if final_log_type == "OUT":
-            gate_settings = frappe.get_single("Gate Face Punching")
+            gate_settings = frappe.get_single("Hns Gate Face Punching")
             out_allowed, allowed_time = is_out_allowed(gate_settings)
             if not out_allowed:
                 return {
@@ -700,7 +700,7 @@ def mobile_detect_and_verify(image_data, employee=None):
 
         if employee:
             profile = frappe.db.get_value(
-                "Employee Face Profile",
+                "Hns Employee Face Profile",
                 {"employee": employee, "active": 1},
                 ["name", "employee", "embedding"],
                 as_dict=True,
@@ -789,7 +789,7 @@ def mobile_enroll_face(employee, image_data, re_enroll=0):
             frappe.throw("Only active employees can be enrolled.")
 
         existing_profile = frappe.db.get_value(
-            "Employee Face Profile",
+            "Hns Employee Face Profile",
             {"employee": employee},
             ["name", "is_enrolled", "embedding"],
             as_dict=True,
@@ -819,11 +819,11 @@ def mobile_enroll_face(employee, image_data, re_enroll=0):
         }
 
         if profile_name:
-            profile = frappe.get_doc("Employee Face Profile", profile_name)
+            profile = frappe.get_doc("Hns Employee Face Profile", profile_name)
             profile.update(values)
             profile.save(ignore_permissions=True)
         else:
-            profile = frappe.get_doc({"doctype": "Employee Face Profile", **values})
+            profile = frappe.get_doc({"doctype": "Hns Employee Face Profile", **values})
             profile.insert(ignore_permissions=True)
 
         frappe.db.commit()
@@ -853,7 +853,7 @@ def get_today_attendance(employee=None):
             filters["employee"] = employee
 
         logs = frappe.get_all(
-            "HNS Face Detection Log",
+            "Hns Face Detection Log",
             filters=filters,
             fields=["name", "employee", "employee_name", "log_type", "time", "similarity_score"],
             order_by="time asc",
@@ -886,7 +886,7 @@ def get_face_profile_status(employee=None):
             frappe.throw("Employee is required.")
 
         profile = frappe.db.get_value(
-            "Employee Face Profile",
+            "Hns Employee Face Profile",
             {"employee": employee},
             ["name", "employee", "employee_name", "active", "is_enrolled", "enrolled_on", "embedding"],
             as_dict=True,
@@ -910,7 +910,7 @@ def get_face_profile_status(employee=None):
 def get_kiosk_settings():
     try:
         _require_login()
-        settings = frappe.get_single("Gate Face Punching")
+        settings = frappe.get_single("Hns Gate Face Punching")
         return {
             "auto_detect": frappe.utils.cint(settings.auto_detect),
             "mode": settings.mode or "",
@@ -941,7 +941,7 @@ def _get_face_logs(log_date=None, limit=50):
         end_datetime = f"{target_date} 23:59:59"
 
         logs = frappe.db.get_all(
-            "HNS Face Detection Log",
+            "Hns Face Detection Log",
             filters={
                 "time": ["between", [start_datetime, end_datetime]]
             },

@@ -12,7 +12,7 @@ class HnsFaceDetectionLog(Document):
             if not self.employee_name:
                 self.employee_name = frappe.db.get_value("Employee", self.employee, "employee_name")
             if not self.punch_category:
-                gate_settings = frappe.get_single("Gate Face Punching")
+                gate_settings = frappe.get_single("Hns Gate Face Punching")
                 self.punch_category = gate_settings.punch_category if gate_settings else "Attendance"
             if not self.log_type:
                 frappe.throw("Log Type is required.")

@@ -6,11 +6,11 @@ from frappe.tests.utils import FrappeTestCase
 class TestHnsEmployeeFaceProfile(FrappeTestCase):
     def test_save_profile_without_embedding_allowed(self):
         emp_id = self._get_or_create_test_employee("TEST-SAVENOFACE-001")
-        if frappe.db.exists("Employee Face Profile", emp_id):
-            frappe.delete_doc("Employee Face Profile", emp_id, force=1)
+        if frappe.db.exists("Hns Employee Face Profile", emp_id):
+            frappe.delete_doc("Hns Employee Face Profile", emp_id, force=1)
 
         profile = frappe.get_doc({
-            "doctype": "Employee Face Profile",
+            "doctype": "Hns Employee Face Profile",
             "employee": emp_id,
         })
         profile.insert(ignore_permissions=True)
@@ -22,12 +22,12 @@ class TestHnsEmployeeFaceProfile(FrappeTestCase):
 
     def test_save_profile_with_embedding(self):
         emp_id = self._get_or_create_test_employee("TEST-SAVEWITHFACE-001")
-        if frappe.db.exists("Employee Face Profile", emp_id):
-            frappe.delete_doc("Employee Face Profile", emp_id, force=1)
+        if frappe.db.exists("Hns Employee Face Profile", emp_id):
+            frappe.delete_doc("Hns Employee Face Profile", emp_id, force=1)
 
         sample_embedding = json.dumps([0.1, 0.2, 0.3])
         profile = frappe.get_doc({
-            "doctype": "Employee Face Profile",
+            "doctype": "Hns Employee Face Profile",
             "employee": emp_id,
             "embedding": sample_embedding,
         })
@@ -40,12 +40,12 @@ class TestHnsEmployeeFaceProfile(FrappeTestCase):
 
     def test_already_enrolled_prevention(self):
         emp_id = self._get_or_create_test_employee("TEST-ALREADYENROLLED-001")
-        if frappe.db.exists("Employee Face Profile", emp_id):
-            frappe.delete_doc("Employee Face Profile", emp_id, force=1)
+        if frappe.db.exists("Hns Employee Face Profile", emp_id):
+            frappe.delete_doc("Hns Employee Face Profile", emp_id, force=1)
 
         sample_embedding = json.dumps([0.1, 0.2, 0.3])
         profile = frappe.get_doc({
-            "doctype": "Employee Face Profile",
+            "doctype": "Hns Employee Face Profile",
             "employee": emp_id,
             "embedding": sample_embedding,
         })

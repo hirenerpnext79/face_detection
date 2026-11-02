@@ -47,7 +47,7 @@ def _get_face_app():
             )
             _face_app.prepare(ctx_id=-1, det_size=(640, 640))
         except Exception:
-            frappe.log_error(frappe.get_traceback(), "Face Detection: model initialization failed")
+            frappe.log_error(frappe.get_traceback(), "HNS Face Detection: model initialization failed")
             frappe.throw("Face model could not be initialized. Verify InsightFace installation and server logs.")
     return _face_app
 
@@ -132,7 +132,7 @@ def load_image_from_file(image_value):
 
         return None
     except Exception:
-        frappe.log_error(frappe.get_traceback(), "Face Detection: load_image_from_file error")
+        frappe.log_error(frappe.get_traceback(), "HNS Face Detection: load_image_from_file error")
         return None
 
 
@@ -206,7 +206,7 @@ def _find_best_match(probe_embedding):
                 best_score = score
                 best_match = profile
         except (ValueError, TypeError, json.JSONDecodeError):
-            frappe.log_error(f"Invalid embedding in {profile.name}", "Face Detection: corrupt embedding")
+            frappe.log_error(f"Invalid embedding in {profile.name}", "HNS Face Detection: corrupt embedding")
 
     if best_match and best_score >= MATCH_THRESHOLD:
         return {"employee": best_match.employee, "similarity": best_score}
@@ -218,7 +218,7 @@ def get_employee_today_logs(employee):
     try:
         today_date = today()
         logs = frappe.db.get_all(
-            "Face Detection Log",
+            "HNS Face Detection Log",
             filters={
                 "employee": employee,
                 "time": [">=", f"{today_date} 00:00:00"]
@@ -239,7 +239,7 @@ def get_employee_today_logs(employee):
             )
         return logs or []
     except Exception:
-        frappe.log_error(frappe.get_traceback(), "Face Detection: get_employee_today_logs error")
+        frappe.log_error(frappe.get_traceback(), "HNS Face Detection: get_employee_today_logs error")
         return []
 
 
@@ -261,7 +261,7 @@ def is_out_allowed(gate_settings):
             return False, time_display
         return True, None
     except Exception:
-        frappe.log_error(frappe.get_traceback(), "Face Detection: is_out_allowed error")
+        frappe.log_error(frappe.get_traceback(), "HNS Face Detection: is_out_allowed error")
         return True, None
 
 
@@ -359,7 +359,7 @@ def check_today_attendance_status(employee):
             "logs_count": len(logs),
         }
     except Exception:
-        frappe.log_error(frappe.get_traceback(), "Face Detection: check_today_attendance_status error")
+        frappe.log_error(frappe.get_traceback(), "HNS Face Detection: check_today_attendance_status error")
         return {
             "completed": False,
             "next_action": "IN",
@@ -373,7 +373,7 @@ def get_auto_log_type(employee):
         status = check_today_attendance_status(employee)
         return status.get("next_action")
     except Exception:
-        frappe.log_error(frappe.get_traceback(), "Face Detection: auto log type error")
+        frappe.log_error(frappe.get_traceback(), "HNS Face Detection: auto log type error")
         return "IN"
 
 
@@ -385,7 +385,7 @@ def record_attendance_log(employee, log_type, similarity=None):
         punch_category = gate_settings.punch_category if gate_settings and gate_settings.punch_category else "Attendance"
 
         log_doc = frappe.get_doc({
-            "doctype": "Face Detection Log",
+            "doctype": "HNS Face Detection Log",
             "employee": employee,
             "employee_name": employee_name,
             "log_type": log_type,
@@ -408,7 +408,7 @@ def record_attendance_log(employee, log_type, similarity=None):
         frappe.db.commit()
         return log_doc
     except Exception:
-        frappe.log_error(frappe.get_traceback(), "Face Detection: failed to record attendance")
+        frappe.log_error(frappe.get_traceback(), "HNS Face Detection: failed to record attendance")
         raise
 
 
@@ -470,7 +470,7 @@ def enroll_face(employee, image_data, re_enroll=0):
     except frappe.ValidationError:
         raise
     except Exception:
-        frappe.log_error(frappe.get_traceback(), "Face Detection: enroll_face failed")
+        frappe.log_error(frappe.get_traceback(), "HNS Face Detection: enroll_face failed")
         raise
 
 
@@ -503,7 +503,7 @@ def identify_employee(image_data):
             }
 
         token = uuid.uuid4().hex
-        cache_key = "face_detection:confirmation:" + token
+        cache_key = "hns_face_detection:confirmation:" + token
         frappe.cache().set_value(
             cache_key,
             {"employee": matched_employee, "user": frappe.session.user, "similarity": match["similarity"]},
@@ -524,7 +524,7 @@ def identify_employee(image_data):
     except frappe.ValidationError:
         raise
     except Exception:
-        frappe.log_error(frappe.get_traceback(), "Face Detection: identify_employee failed")
+        frappe.log_error(frappe.get_traceback(), "HNS Face Detection: identify_employee failed")
         raise
 
 
@@ -538,7 +538,7 @@ def confirm_attendance(confirmation_token, log_type):
         if not isinstance(confirmation_token, str) or not re.fullmatch(r"[a-f0-9]{32}", confirmation_token):
             frappe.throw("Invalid confirmation token. Identify the employee again.")
 
-        cache_key = "face_detection:confirmation:" + confirmation_token
+        cache_key = "hns_face_detection:confirmation:" + confirmation_token
         payload = frappe.cache().get_value(cache_key)
         if not payload:
             frappe.throw("Confirmation expired or already used. Identify the employee again.")
@@ -582,7 +582,7 @@ def confirm_attendance(confirmation_token, log_type):
     except frappe.ValidationError:
         raise
     except Exception:
-        frappe.log_error(frappe.get_traceback(), "Face Detection: confirm_attendance failed")
+        frappe.log_error(frappe.get_traceback(), "HNS Face Detection: confirm_attendance failed")
         raise
 
 
@@ -682,7 +682,7 @@ def mobile_face_checkin(image_data=None, log_type=None, employee=None, probe_emb
             "message": _get_clean_error_message(e),
         }
     except Exception:
-        frappe.log_error(frappe.get_traceback(), "Face Detection: mobile_face_checkin failed")
+        frappe.log_error(frappe.get_traceback(), "HNS Face Detection: mobile_face_checkin failed")
         return {
             "status": "error",
             "ok": False,
@@ -762,7 +762,7 @@ def mobile_detect_and_verify(image_data, employee=None):
             "threshold": MATCH_THRESHOLD,
         }
     except Exception:
-        frappe.log_error(frappe.get_traceback(), "Face Detection: mobile_detect_and_verify failed")
+        frappe.log_error(frappe.get_traceback(), "HNS Face Detection: mobile_detect_and_verify failed")
         return {
             "matched": False,
             "message": "Face detection failed. Please try again.",
@@ -837,7 +837,7 @@ def mobile_enroll_face(employee, image_data, re_enroll=0):
     except frappe.ValidationError:
         raise
     except Exception:
-        frappe.log_error(frappe.get_traceback(), "Face Detection: mobile_enroll_face failed")
+        frappe.log_error(frappe.get_traceback(), "HNS Face Detection: mobile_enroll_face failed")
         raise
 
 
@@ -853,7 +853,7 @@ def get_today_attendance(employee=None):
             filters["employee"] = employee
 
         logs = frappe.get_all(
-            "Face Detection Log",
+            "HNS Face Detection Log",
             filters=filters,
             fields=["name", "employee", "employee_name", "log_type", "time", "similarity_score"],
             order_by="time asc",
@@ -871,7 +871,7 @@ def get_today_attendance(employee=None):
             "count": len(logs)
         }
     except Exception:
-        frappe.log_error(frappe.get_traceback(), "Face Detection: get_today_attendance failed")
+        frappe.log_error(frappe.get_traceback(), "HNS Face Detection: get_today_attendance failed")
         raise
 
 
@@ -902,7 +902,7 @@ def get_face_profile_status(employee=None):
             "enrolled_on": profile.enrolled_on,
         }
     except Exception:
-        frappe.log_error(frappe.get_traceback(), "Face Detection: get_face_profile_status failed")
+        frappe.log_error(frappe.get_traceback(), "HNS Face Detection: get_face_profile_status failed")
         raise
 
 
@@ -917,7 +917,7 @@ def get_kiosk_settings():
             "punch_category": settings.punch_category or ""
         }
     except Exception:
-        frappe.log_error(frappe.get_traceback(), "Face Detection: get_kiosk_settings failed")
+        frappe.log_error(frappe.get_traceback(), "HNS Face Detection: get_kiosk_settings failed")
         return {
             "auto_detect": 0,
             "mode": "",
@@ -926,7 +926,14 @@ def get_kiosk_settings():
 
 
 @frappe.whitelist()
+def get_hns_face_detection_logs(log_date=None, limit=50):
+    return _get_face_logs(log_date, limit)
+
+@frappe.whitelist()
 def get_face_detection_logs(log_date=None, limit=50):
+    return _get_face_logs(log_date, limit)
+
+def _get_face_logs(log_date=None, limit=50):
     try:
         _require_login()
         target_date = log_date or today()
@@ -934,7 +941,7 @@ def get_face_detection_logs(log_date=None, limit=50):
         end_datetime = f"{target_date} 23:59:59"
 
         logs = frappe.db.get_all(
-            "Face Detection Log",
+            "HNS Face Detection Log",
             filters={
                 "time": ["between", [start_datetime, end_datetime]]
             },
@@ -973,7 +980,7 @@ def get_face_detection_logs(log_date=None, limit=50):
             "count": len(formatted_logs)
         }
     except Exception:
-        frappe.log_error(frappe.get_traceback(), "Face Detection: get_face_detection_logs failed")
+        frappe.log_error(frappe.get_traceback(), "HNS Face Detection: get_face_detection_logs failed")
         return {
             "date": log_date or today(),
             "formatted_date": frappe.utils.formatdate(log_date or today()),

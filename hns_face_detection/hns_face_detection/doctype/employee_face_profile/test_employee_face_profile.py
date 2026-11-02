@@ -51,7 +51,7 @@ class TestEmployeeFaceProfile(FrappeTestCase):
         })
         profile.insert(ignore_permissions=True)
 
-        from face_detection.api import enroll_face, get_face_profile_status
+        from hns_face_detection.api import enroll_face, get_face_profile_status
         status = get_face_profile_status(employee=emp_id)
         self.assertTrue(status.get("enrolled"))
 

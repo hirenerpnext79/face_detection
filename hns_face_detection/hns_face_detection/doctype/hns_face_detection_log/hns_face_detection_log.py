@@ -2,7 +2,7 @@ import frappe
 from frappe.model.document import Document
 
 
-class FaceDetectionLog(Document):
+class HNSFaceDetectionLog(Document):
     def validate(self):
         try:
             if not self.employee:

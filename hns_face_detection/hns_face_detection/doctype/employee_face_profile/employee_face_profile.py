@@ -2,7 +2,7 @@ import json
 import frappe
 from frappe.model.document import Document
 from frappe.utils import now_datetime
-from face_detection.api import extract_embedding_from_file_or_data
+from hns_face_detection.api import extract_embedding_from_file_or_data
 
 
 class EmployeeFaceProfile(Document):

@@ -1,10 +1,10 @@
-/* Disable page scrollbar strictly when face-detection-page is the active route */
-body[data-route="face-detection-page"] {
+/* Disable page scrollbar strictly when hns-face-detection-page is the active route */
+body[data-route="hns-face-detection-page"] {
     overflow: hidden !important;
 }
 
-#page-face-detection-page,
-[data-page-route="face-detection-page"] {
+#page-hns-face-detection-page,
+[data-page-route="hns-face-detection-page"] {
     padding: 0 !important;
     margin: 0 !important;
     height: calc(100vh - var(--navbar-height, 48px)) !important;
@@ -16,14 +16,14 @@ body[data-route="face-detection-page"] {
     overflow: hidden !important;
 }
 
-#page-face-detection-page .page-head,
-[data-page-route="face-detection-page"] .page-head,
-#page-face-detection-page .page-title,
-[data-page-route="face-detection-page"] .page-title,
-#page-face-detection-page .title-area,
-[data-page-route="face-detection-page"] .title-area,
-#page-face-detection-page .title-text,
-[data-page-route="face-detection-page"] .title-text {
+#page-hns-face-detection-page .page-head,
+[data-page-route="hns-face-detection-page"] .page-head,
+#page-hns-face-detection-page .page-title,
+[data-page-route="hns-face-detection-page"] .page-title,
+#page-hns-face-detection-page .title-area,
+[data-page-route="hns-face-detection-page"] .title-area,
+#page-hns-face-detection-page .title-text,
+[data-page-route="hns-face-detection-page"] .title-text {
     display: none !important;
     height: 0 !important;
     min-height: 0 !important;
@@ -32,13 +32,13 @@ body[data-route="face-detection-page"] {
     visibility: hidden !important;
 }
 
-#page-face-detection-page .page-body,
-[data-page-route="face-detection-page"] .page-body,
-#page-face-detection-page .page-wrapper,
-#page-face-detection-page .page-content,
-#page-face-detection-page .layout-main,
-#page-face-detection-page .layout-main-section-wrapper,
-#page-face-detection-page .layout-main-section {
+#page-hns-face-detection-page .page-body,
+[data-page-route="hns-face-detection-page"] .page-body,
+#page-hns-face-detection-page .page-wrapper,
+#page-hns-face-detection-page .page-content,
+#page-hns-face-detection-page .layout-main,
+#page-hns-face-detection-page .layout-main-section-wrapper,
+#page-hns-face-detection-page .layout-main-section {
     padding: 0 !important;
     margin: 0 !important;
     flex: 1 !important;

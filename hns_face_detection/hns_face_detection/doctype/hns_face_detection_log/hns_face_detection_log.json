@@ -84,8 +84,8 @@
  "links": [],
  "modified": "2026-11-02 11:54:58.050664",
  "modified_by": "Administrator",
- "module": "Face Detection",
- "name": "Face Detection Log",
+ "module": "HNS Face Detection",
+ "name": "HNS Face Detection Log",
  "naming_rule": "By \"Naming Series\" field",
  "owner": "Administrator",
  "permissions": [

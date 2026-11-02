@@ -1,11 +1,11 @@
-frappe.pages["face-detection-page"].on_page_load = function (wrapper) {
+frappe.pages["hns-face-detection-page"].on_page_load = function (wrapper) {
     const page = frappe.ui.make_app_page({
         parent: wrapper,
         title: "",
         single_column: true
     });
 
-    $(frappe.render_template("face_detection_page", {})).appendTo(page.main);
+    $(frappe.render_template("hns_face_detection_page", {})).appendTo(page.main);
     window.scrollTo(0, 0);
     $(wrapper).find(".page-head, .page-title, .title-area, .title-text").remove();
 
@@ -92,7 +92,7 @@ frappe.pages["face-detection-page"].on_page_load = function (wrapper) {
 
         try {
             const r = await frappe.call({
-                method: "face_detection.api.get_face_profile_status",
+                method: "hns_face_detection.api.get_face_profile_status",
                 args: { employee }
             });
             const status = r.message;
@@ -180,7 +180,7 @@ frappe.pages["face-detection-page"].on_page_load = function (wrapper) {
     async function loadSettings() {
         try {
             const r = await frappe.call({
-                method: "face_detection.api.get_kiosk_settings"
+                method: "hns_face_detection.api.get_kiosk_settings"
             });
             if (r.message) {
                 kioskSettings = r.message;
@@ -358,7 +358,7 @@ frappe.pages["face-detection-page"].on_page_load = function (wrapper) {
     async function fetchLogs() {
         try {
             const r = await frappe.call({
-                method: "face_detection.api.get_face_detection_logs"
+                method: "hns_face_detection.api.get_face_detection_logs"
             });
             if (r.message) {
                 renderLogs(r.message.logs, r.message.formatted_date, r.message.count);
@@ -379,7 +379,7 @@ frappe.pages["face-detection-page"].on_page_load = function (wrapper) {
 
             const image_data = captureDataUrl();
             const r = await frappe.call({
-                method: "face_detection.api.identify_employee",
+                method: "hns_face_detection.api.identify_employee",
                 args: { image_data }
             });
             const result = r.message;
@@ -454,7 +454,7 @@ frappe.pages["face-detection-page"].on_page_load = function (wrapper) {
 
             if (action === "IN" || action === "OUT") {
                 const confirmRes = await frappe.call({
-                    method: "face_detection.api.confirm_attendance",
+                    method: "hns_face_detection.api.confirm_attendance",
                     args: {
                         confirmation_token: result.confirmation_token,
                         log_type: action
@@ -546,7 +546,7 @@ frappe.pages["face-detection-page"].on_page_load = function (wrapper) {
             enrollBtn.prop("disabled", true).find("span").text("Enrolling...");
             const image_data = captureDataUrl();
             const r = await frappe.call({
-                method: "face_detection.api.enroll_face",
+                method: "hns_face_detection.api.enroll_face",
                 args: { employee, image_data }
             });
 

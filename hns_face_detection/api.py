@@ -155,35 +155,69 @@ def _cosine_similarity(left, right):
     return float(np.dot(left, right) / denom)
 
 
-def _find_best_match(probe_embedding):
+_cached_profiles = None
+_cached_profiles_time = 0
+
+
+def _get_active_profile_embeddings():
+    global _cached_profiles, _cached_profiles_time
+    import time
+    now = time.time()
+    if _cached_profiles is not None and (now - _cached_profiles_time) < 60:
+        return _cached_profiles
+
     profiles = frappe.get_all(
         "Hns Employee Face Profile",
         filters={"active": 1},
         fields=["name", "employee", "embedding"],
         limit_page_length=10000,
     )
-
-    best_match = None
-    best_score = -1.0
-
+    loaded = []
     for profile in profiles:
         try:
             if not profile.embedding:
                 continue
-            candidate = np.asarray(json.loads(profile.embedding), dtype=np.float32)
-            if candidate.ndim != 1 or candidate.size != probe_embedding.size:
-                continue
-            score = _cosine_similarity(probe_embedding, candidate)
+            arr = np.asarray(json.loads(profile.embedding), dtype=np.float32)
+            norm = float(np.linalg.norm(arr))
+            if norm > 0:
+                loaded.append({
+                    "name": profile.name,
+                    "employee": profile.employee,
+                    "embedding": arr / norm,
+                })
+        except Exception:
+            continue
+    _cached_profiles = loaded
+    _cached_profiles_time = now
+    return _cached_profiles
+
+
+def _find_best_match(probe_embedding):
+    try:
+        profiles = _get_active_profile_embeddings()
+        if not profiles:
+            return None
+
+        probe_norm = float(np.linalg.norm(probe_embedding))
+        if probe_norm <= 0:
+            return None
+        normed_probe = probe_embedding / probe_norm
+
+        best_match = None
+        best_score = -1.0
+
+        for profile in profiles:
+            score = float(np.dot(normed_probe, profile["embedding"]))
             if score > best_score:
                 best_score = score
                 best_match = profile
-        except (ValueError, TypeError, json.JSONDecodeError):
-            frappe.log_error(f"Invalid embedding in {profile.name}", "HNS Face Detection: corrupt embedding")
 
-    if best_match and best_score >= MATCH_THRESHOLD:
-        return {"employee": best_match.employee, "similarity": best_score}
-
-    return None
+        if best_match and best_score >= MATCH_THRESHOLD:
+            return {"employee": best_match["employee"], "similarity": best_score}
+        return None
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "HNS Face Detection: _find_best_match error")
+        return None
 
 
 def get_employee_today_logs(employee):
@@ -433,6 +467,8 @@ def enroll_face(employee, image_data, re_enroll=0):
             profile = frappe.get_doc({"doctype": "Hns Employee Face Profile", **values})
             profile.insert(ignore_permissions=True)
 
+        global _cached_profiles
+        _cached_profiles = None
         frappe.db.commit()
         return {
             "ok": True,

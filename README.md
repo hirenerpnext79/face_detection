@@ -2,6 +2,19 @@
 
 AI-powered facial recognition attendance system for ERPNext and Mobile Applications using InsightFace and OpenCV.
 
+## System Prerequisites (Debian / Ubuntu / WSL)
+
+Before running or installing the app, install the required native C/OpenGL shared libraries:
+
+```bash
+sudo apt update
+sudo apt install -y libgl1 libglib2.0-0 libsm6 libxext6 libxrender1
+```
+
+> **Why this is required**: InsightFace and OpenCV (`cv2`) require native Linux shared libraries (`libGL.so.1`, `libgthread-2.0.so.0`, `libSM.so.6`, `libXext.so.6`, `libXrender.so.1`). Without these OS libraries, importing cv2 raises `ImportError: libGL.so.1: cannot open shared object file: No such file or directory`.
+
+---
+
 ## Purpose
 
 1. **Face Profile Enrollment**: Enroll employee face vectors either via web camera capture, mobile camera photo, or direct photo attachment in `Employee Face Profile`.

@@ -1,0 +1,10 @@
+opencv-python-headless
+insightface
+onnxruntime
+Pillow
+scikit-image
+scipy
+tqdm
+requests
+onnx
+

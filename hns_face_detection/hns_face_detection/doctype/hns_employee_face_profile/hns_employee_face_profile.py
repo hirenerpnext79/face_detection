@@ -69,3 +69,18 @@ class HnsEmployeeFaceProfile(Document):
         except Exception:
             frappe.log_error(frappe.get_traceback(), "Face Detection: check enrollment status failed")
             raise
+
+    def on_update(self):
+        try:
+            from hns_face_detection.api import _invalidate_profiles_cache
+            _invalidate_profiles_cache()
+        except Exception:
+            frappe.log_error(frappe.get_traceback(), "Face Detection: profile on_update cache invalidation failed")
+
+    def on_trash(self):
+        try:
+            from hns_face_detection.api import _invalidate_profiles_cache
+            _invalidate_profiles_cache()
+        except Exception:
+            frappe.log_error(frappe.get_traceback(), "Face Detection: profile on_trash cache invalidation failed")
+

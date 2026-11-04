@@ -8,11 +8,20 @@
   "naming_series",
   "employee",
   "employee_name",
+  "department",
+  "designation",
   "time",
   "column_break_main",
   "log_type",
+  "action",
   "punch_category",
-  "similarity_score"
+  "similarity_score",
+  "column_break_aqcf",
+  "longitude",
+  "latitude",
+  "section_break_irfi",
+  "notes",
+  "log"
  ],
  "fields": [
   {
@@ -45,17 +54,16 @@
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Log Type",
-   "options": "IN\nOUT",
+   "options": "\nIN\nOUT",
    "read_only": 1
   },
   {
-   "default": "Attendance",
    "fieldname": "punch_category",
    "fieldtype": "Select",
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Punch Category",
-   "options": "Attendance\nBio\nMeal\nVisit\nPersonal",
+   "options": "\nAttendance\nBio\nMeal\nVisit\nPersonal",
    "read_only": 1
   },
   {
@@ -77,11 +85,70 @@
    "label": "Similarity Score",
    "precision": "4",
    "read_only": 1
+  },
+  {
+   "fieldname": "column_break_aqcf",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "longitude",
+   "fieldtype": "Data",
+   "label": "Longitude",
+   "read_only": 1
+  },
+  {
+   "fieldname": "latitude",
+   "fieldtype": "Data",
+   "label": "Latitude",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_break_irfi",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "log",
+   "fieldtype": "Code",
+   "label": "Log",
+   "options": "JSON",
+   "read_only": 1
+  },
+  {
+   "fieldname": "action",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Action",
+   "options": "\nConfirm\nReject",
+   "read_only": 1
+  },
+  {
+   "fieldname": "notes",
+   "fieldtype": "Code",
+   "label": "Notes",
+   "options": "JSON",
+   "read_only": 1
+  },
+  {
+   "fieldname": "department",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Department",
+   "options": "Department",
+   "read_only": 1
+  },
+  {
+   "fieldname": "designation",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Designation",
+   "options": "Designation",
+   "read_only": 1
   }
  ],
  "links": [],
- "modified": "2026-11-02 18:51:58.175458",
- "modified_by": "Administrator",
+ "modified": "2026-11-04 15:23:17.524069",
+ "modified_by": "hirenerpnext79@gmail.com",
  "module": "HNS Face Detection",
  "name": "Hns Face Detection Log",
  "naming_rule": "By \"Naming Series\" field",

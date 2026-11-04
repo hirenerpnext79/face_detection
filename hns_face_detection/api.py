@@ -4,14 +4,28 @@ import json
 import math
 import os
 import re
+import time
 import uuid
 import warnings
 
-import cv2
+try:
+    import cv2
+except ImportError as _cv2_err:
+    if "libGL" in str(_cv2_err) or "cannot open shared object file" in str(_cv2_err):
+        import subprocess
+        import sys
+        try:
+            subprocess.run([sys.executable, "-m", "pip", "uninstall", "-y", "opencv-python"], check=False)
+            subprocess.run([sys.executable, "-m", "pip", "install", "opencv-python-headless"], check=False)
+            import cv2
+        except Exception:
+            raise _cv2_err
+    else:
+        raise
 import frappe
 from frappe import _
 import numpy as np
-from frappe.utils import format_time, now_datetime, to_timedelta, today
+from frappe.utils import format_time, now_datetime, today
 
 warnings.filterwarnings("ignore", category=FutureWarning, message=r".*estimate.*")
 warnings.filterwarnings("ignore", category=FutureWarning, module=r".*insightface.*")
@@ -22,11 +36,10 @@ CONFIRMATION_TTL_SECONDS = 180
 ALLOWED_ENROLLMENT_ROLES = {"System Manager", "HR Manager"}
 
 _face_app = None
-
-
-def _require_login():
-    if frappe.session.user == "Guest":
-        frappe.throw("Login is required.", frappe.PermissionError)
+_cached_matrix = None
+_cached_employees = None
+_cached_profiles_time = 0
+_cached_profiles_version = None
 
 
 def _require_enrollment_role():
@@ -35,6 +48,49 @@ def _require_enrollment_role():
     user_roles = set(frappe.get_roles(frappe.session.user))
     if not ALLOWED_ENROLLMENT_ROLES.intersection(user_roles):
         frappe.throw("Only HR Manager or System Manager can enroll face profiles.", frappe.PermissionError)
+
+
+def get_employee_details(employee_or_user):
+    try:
+        if not employee_or_user:
+            return None
+        emp_id = None
+        if frappe.db.exists("Employee", employee_or_user):
+            emp_id = employee_or_user
+        else:
+            emp_id = frappe.db.get_value("Employee", {"user_id": employee_or_user}, "name")
+        if not emp_id or not frappe.db.exists("Employee", emp_id):
+            return None
+        emp = frappe.get_doc("Employee", emp_id)
+        return {
+            "name": emp.name,
+            "employee": emp.name,
+            "employee_name": emp.employee_name or emp.name,
+            "status": emp.status or "Active",
+            "designation": emp.designation or "",
+            "department": emp.department or "",
+            "company": emp.company or "",
+            "user_id": emp.user_id or "",
+            "doc": emp,
+        }
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "HNS Face Detection: get_employee_details error")
+        return None
+
+
+@frappe.whitelist(allow_guest=True)
+def get_employee_info(employee=None):
+    try:
+        target = employee or frappe.session.user
+        details = get_employee_details(target)
+        if details:
+            details_copy = dict(details)
+            details_copy.pop("doc", None)
+            return details_copy
+        return None
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "HNS Face Detection: get_employee_info failed")
+        return None
 
 
 def _get_face_app():
@@ -47,7 +103,7 @@ def _get_face_app():
                 providers=["CPUExecutionProvider"],
                 allowed_modules=["detection", "recognition"],
             )
-            _face_app.prepare(ctx_id=-1, det_size=(640, 640))
+            _face_app.prepare(ctx_id=-1, det_size=(480, 480))
         except Exception:
             frappe.log_error(frappe.get_traceback(), "HNS Face Detection: model initialization failed")
             frappe.throw("Face model could not be initialized. Verify InsightFace installation and server logs.")
@@ -57,7 +113,9 @@ def _get_face_app():
 @frappe.whitelist(allow_guest=True)
 def warmup_model():
     try:
-        _get_face_app()
+        app = _get_face_app()
+        dummy = np.zeros((240, 240, 3), dtype=np.uint8)
+        app.get(dummy)
         return {"ok": True, "message": "Face model ready."}
     except Exception:
         frappe.log_error(frappe.get_traceback(), "HNS Face Detection: warmup failed")
@@ -85,28 +143,31 @@ def _decode_image(image_data):
     if not raw or len(raw) > MAX_IMAGE_BYTES:
         frappe.throw("Image is empty or exceeds the 5 MB limit.")
 
-    try:
-        from io import BytesIO
-        from PIL import Image, ImageOps
-        pil_image = Image.open(BytesIO(raw))
-        pil_image = ImageOps.exif_transpose(pil_image)
-        if pil_image.mode != "RGB":
-            pil_image = pil_image.convert("RGB")
-        image = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
-    except Exception:
-        arr = np.frombuffer(raw, dtype=np.uint8)
-        image = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+    arr = np.frombuffer(raw, dtype=np.uint8)
+    image = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+
+    if image is None:
+        try:
+            from io import BytesIO
+            from PIL import Image, ImageOps
+            pil_image = Image.open(BytesIO(raw))
+            pil_image = ImageOps.exif_transpose(pil_image)
+            if pil_image.mode != "RGB":
+                pil_image = pil_image.convert("RGB")
+            image = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
+        except Exception:
+            pass
 
     if image is None:
         frappe.throw("Could not decode the image.")
 
     height, width = image.shape[:2]
-    if width < 160 or height < 160:
+    if width < 120 or height < 120:
         frappe.throw("Image resolution is too low. Ensure face is clearly visible.")
 
     max_dim = max(height, width)
-    if max_dim > 640:
-        scale = 640.0 / max_dim
+    if max_dim > 480:
+        scale = 480.0 / max_dim
         new_w = int(width * scale)
         new_h = int(height * scale)
         image = cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_AREA)
@@ -116,14 +177,6 @@ def _decode_image(image_data):
 
 def _extract_embedding_from_array(image):
     faces = _get_face_app().get(image)
-    if not faces:
-        for angle in (cv2.ROTATE_90_CLOCKWISE, cv2.ROTATE_180, cv2.ROTATE_90_COUNTERCLOCKWISE):
-            rotated = cv2.rotate(image, angle)
-            candidate_faces = _get_face_app().get(rotated)
-            if candidate_faces:
-                faces = candidate_faces
-                break
-
     if not faces:
         frappe.throw("No face detected. Center one face clearly in the camera and try again.")
     if len(faces) != 1:
@@ -141,38 +194,47 @@ def _extract_embedding_from_array(image):
 def extract_embedding_from_file_or_data(image_input):
     if not image_input or not isinstance(image_input, str):
         frappe.throw("Valid image input is required.")
-
     image = _decode_image(image_input)
     return _extract_embedding_from_array(image)
 
 
-def _cosine_similarity(left, right):
-    left = np.asarray(left, dtype=np.float32)
-    right = np.asarray(right, dtype=np.float32)
-    denom = float(np.linalg.norm(left) * np.linalg.norm(right))
-    if denom <= 0:
-        return -1.0
-    return float(np.dot(left, right) / denom)
+def _invalidate_profiles_cache(doc=None, method=None):
+    global _cached_matrix, _cached_employees, _cached_profiles_time, _cached_profiles_version
+    _cached_matrix = None
+    _cached_employees = None
+    _cached_profiles_time = 0
+    _cached_profiles_version = None
+    try:
+        new_version = frappe.generate_hash(length=12)
+        frappe.cache().set_value("hns_face_profiles_version", new_version)
+    except Exception:
+        pass
 
 
-_cached_profiles = None
-_cached_profiles_time = 0
-
-
-def _get_active_profile_embeddings():
-    global _cached_profiles, _cached_profiles_time
-    import time
+def _load_active_profiles():
+    global _cached_matrix, _cached_employees, _cached_profiles_time, _cached_profiles_version
     now = time.time()
-    if _cached_profiles is not None and (now - _cached_profiles_time) < 60:
-        return _cached_profiles
+    try:
+        current_version = frappe.cache().get_value("hns_face_profiles_version")
+    except Exception:
+        current_version = None
+
+    if (
+        _cached_matrix is not None
+        and _cached_profiles_version == current_version
+        and (now - _cached_profiles_time) < 30
+    ):
+        return _cached_matrix, _cached_employees
 
     profiles = frappe.get_all(
         "Hns Employee Face Profile",
-        filters={"active": 1},
-        fields=["name", "employee", "embedding"],
+        filters={"active": 1, "is_enrolled": 1},
+        fields=["employee", "embedding"],
         limit_page_length=10000,
     )
-    loaded = []
+
+    valid_embeddings = []
+    valid_employees = []
     for profile in profiles:
         try:
             if not profile.embedding:
@@ -180,22 +242,27 @@ def _get_active_profile_embeddings():
             arr = np.asarray(json.loads(profile.embedding), dtype=np.float32)
             norm = float(np.linalg.norm(arr))
             if norm > 0:
-                loaded.append({
-                    "name": profile.name,
-                    "employee": profile.employee,
-                    "embedding": arr / norm,
-                })
+                valid_embeddings.append(arr / norm)
+                valid_employees.append(profile.employee)
         except Exception:
             continue
-    _cached_profiles = loaded
+
+    if valid_embeddings:
+        _cached_matrix = np.vstack(valid_embeddings)
+        _cached_employees = valid_employees
+    else:
+        _cached_matrix = np.empty((0, 512), dtype=np.float32)
+        _cached_employees = []
+
     _cached_profiles_time = now
-    return _cached_profiles
+    _cached_profiles_version = current_version
+    return _cached_matrix, _cached_employees
 
 
 def _find_best_match(probe_embedding):
     try:
-        profiles = _get_active_profile_embeddings()
-        if not profiles:
+        matrix, employees = _load_active_profiles()
+        if matrix.shape[0] == 0:
             return None
 
         probe_norm = float(np.linalg.norm(probe_embedding))
@@ -203,17 +270,20 @@ def _find_best_match(probe_embedding):
             return None
         normed_probe = probe_embedding / probe_norm
 
-        best_match = None
-        best_score = -1.0
+        scores = np.dot(matrix, normed_probe)
+        best_idx = int(np.argmax(scores))
+        best_score = float(scores[best_idx])
 
-        for profile in profiles:
-            score = float(np.dot(normed_probe, profile["embedding"]))
-            if score > best_score:
-                best_score = score
-                best_match = profile
-
-        if best_match and best_score >= MATCH_THRESHOLD:
-            return {"employee": best_match["employee"], "similarity": best_score}
+        if best_score >= MATCH_THRESHOLD:
+            matched_employee = employees[best_idx]
+            is_active_in_db = frappe.db.exists(
+                "Hns Employee Face Profile",
+                {"employee": matched_employee, "active": 1, "is_enrolled": 1},
+            )
+            if not is_active_in_db:
+                _invalidate_profiles_cache()
+                return None
+            return {"employee": matched_employee, "similarity": best_score}
         return None
     except Exception:
         frappe.log_error(frappe.get_traceback(), "HNS Face Detection: _find_best_match error")
@@ -249,118 +319,14 @@ def get_employee_today_logs(employee):
         return []
 
 
-def is_out_allowed(gate_settings):
-    try:
-        if not gate_settings or not gate_settings.out_time:
-            return True, None
-
-        out_td = to_timedelta(gate_settings.out_time)
-        if not out_td:
-            return True, None
-
-        now_td = to_timedelta(now_datetime().time())
-        if now_td < out_td:
-            try:
-                time_display = format_time(str(out_td), "hh:mm a")
-            except Exception:
-                time_display = str(out_td)
-            return False, time_display
-        return True, None
-    except Exception:
-        frappe.log_error(frappe.get_traceback(), "HNS Face Detection: is_out_allowed error")
-        return True, None
-
-
 def check_today_attendance_status(employee):
     try:
         logs = get_employee_today_logs(employee)
-        has_in = any(l.log_type == "IN" for l in logs)
-        has_out = any(l.log_type == "OUT" for l in logs)
-
-        gate_settings = frappe.get_single("Hns Gate Face Punching")
-        is_auto_detect = bool(gate_settings and gate_settings.auto_detect)
-        kiosk_mode = (gate_settings.mode or "").strip().upper() if (gate_settings and not is_auto_detect) else ""
-        out_allowed, allowed_time = is_out_allowed(gate_settings)
-
-        if has_in and has_out:
-            return {
-                "completed": True,
-                "next_action": None,
-                "message": _("Already today IN and OUT log created"),
-                "logs_count": len(logs),
-            }
-
-        if kiosk_mode == "IN":
-            if has_in:
-                msg = (
-                    _("Already today IN log created. OUT entry is allowed after {0}").format(allowed_time)
-                    if not out_allowed
-                    else _("Already today IN log created")
-                )
-                return {
-                    "completed": True,
-                    "next_action": None,
-                    "out_time_blocked": not out_allowed,
-                    "allowed_time": allowed_time if not out_allowed else None,
-                    "message": msg,
-                    "logs_count": len(logs),
-                }
-            return {
-                "completed": False,
-                "next_action": "IN",
-                "message": None,
-                "logs_count": len(logs),
-            }
-
-        if kiosk_mode == "OUT":
-            if has_out:
-                return {
-                    "completed": True,
-                    "next_action": None,
-                    "message": _("Already today OUT log created"),
-                    "logs_count": len(logs),
-                }
-            if not out_allowed:
-                msg = (
-                    _("Already today IN log created. OUT entry is allowed after {0}").format(allowed_time)
-                    if has_in
-                    else _("OUT entry is allowed after {0}").format(allowed_time)
-                )
-                return {
-                    "completed": True,
-                    "next_action": None,
-                    "out_time_blocked": True,
-                    "allowed_time": allowed_time,
-                    "message": msg,
-                    "logs_count": len(logs),
-                }
-            return {
-                "completed": False,
-                "next_action": "OUT",
-                "message": None,
-                "logs_count": len(logs),
-            }
-
-        if has_in:
-            if not out_allowed:
-                return {
-                    "completed": True,
-                    "next_action": None,
-                    "out_time_blocked": True,
-                    "allowed_time": allowed_time,
-                    "message": _("Already today IN log created. OUT entry is allowed after {0}").format(allowed_time),
-                    "logs_count": len(logs),
-                }
-            return {
-                "completed": False,
-                "next_action": "OUT",
-                "message": None,
-                "logs_count": len(logs),
-            }
-
+        last_log_type = logs[-1].log_type if logs else None
+        next_action = "OUT" if last_log_type == "IN" else "IN"
         return {
             "completed": False,
-            "next_action": "IN",
+            "next_action": next_action,
             "message": None,
             "logs_count": len(logs),
         }
@@ -374,31 +340,52 @@ def check_today_attendance_status(employee):
         }
 
 
-def get_auto_log_type(employee):
+def _parse_activity_log(log_input):
+    if not log_input:
+        return {}
+    if isinstance(log_input, dict):
+        return dict(log_input)
     try:
-        status = check_today_attendance_status(employee)
-        return status.get("next_action")
+        return frappe.parse_json(log_input) or {}
     except Exception:
-        frappe.log_error(frappe.get_traceback(), "HNS Face Detection: auto log type error")
-        return "IN"
+        return {"raw": str(log_input)}
 
 
-def record_attendance_log(employee, log_type, similarity=None):
+def record_attendance_log(employee, log_type, similarity=None, punch_category=None, employee_name=None, notes=None, longitude=None, latitude=None, log=None, designation=None, department=None):
     try:
         checkin_time = now_datetime()
-        employee_name = frappe.db.get_value("Employee", employee, "employee_name") or employee
-        gate_settings = frappe.get_single("Hns Gate Face Punching")
-        punch_category = gate_settings.punch_category if gate_settings and gate_settings.punch_category else "Attendance"
+        if not employee_name:
+            emp_info = get_employee_details(employee)
+            employee_name = emp_info["employee_name"] if emp_info else employee
+        if not punch_category:
+            gate_settings = frappe.get_single("Hns Gate Face Punching")
+            punch_category = gate_settings.punch_category if gate_settings and gate_settings.punch_category else "Attendance"
 
-        log_doc = frappe.get_doc({
+        activity_dict = _parse_activity_log(log)
+        loc = activity_dict.get("location") if isinstance(activity_dict.get("location"), dict) else {}
+        eff_latitude = loc.get("latitude") if loc.get("latitude") is not None else latitude
+        eff_longitude = loc.get("longitude") if loc.get("longitude") is not None else longitude
+
+        log_data = {
             "doctype": "Hns Face Detection Log",
             "employee": employee,
             "employee_name": employee_name,
+            "department": department,
+            "designation": designation,
             "log_type": log_type,
+            "action": "Confirm",
             "punch_category": punch_category,
             "time": checkin_time,
             "similarity_score": similarity,
-        })
+            "notes": notes or "",
+            "log": json.dumps(activity_dict, indent=2),
+        }
+        if eff_longitude is not None and str(eff_longitude).strip():
+            log_data["longitude"] = str(eff_longitude)
+        if eff_latitude is not None and str(eff_latitude).strip():
+            log_data["latitude"] = str(eff_latitude)
+
+        log_doc = frappe.get_doc(log_data)
         log_doc.insert(ignore_permissions=True)
 
         if frappe.db.exists("DocType", "Employee Checkin"):
@@ -422,11 +409,12 @@ def record_attendance_log(employee, log_type, similarity=None):
 def enroll_face(employee, image_data, re_enroll=0):
     try:
         _require_enrollment_role()
-        if not employee or not frappe.db.exists("Employee", employee):
+        emp_info = get_employee_details(employee)
+        if not emp_info:
             frappe.throw("A valid Employee ID is required.")
 
-        employee_doc = frappe.get_doc("Employee", employee)
-        if employee_doc.status and employee_doc.status != "Active":
+        employee_doc = emp_info["doc"]
+        if emp_info["status"] != "Active":
             frappe.throw("Only active employees can be enrolled.")
 
         existing_profile = frappe.db.get_value(
@@ -467,8 +455,7 @@ def enroll_face(employee, image_data, re_enroll=0):
             profile = frappe.get_doc({"doctype": "Hns Employee Face Profile", **values})
             profile.insert(ignore_permissions=True)
 
-        global _cached_profiles
-        _cached_profiles = None
+        _invalidate_profiles_cache()
         frappe.db.commit()
         return {
             "ok": True,
@@ -506,8 +493,20 @@ def identify_employee(image_data):
             }
 
         matched_employee = match["employee"]
-        employee_doc = frappe.get_doc("Employee", matched_employee)
-        if employee_doc.status and employee_doc.status != "Active":
+        is_active_profile = frappe.db.exists(
+            "Hns Employee Face Profile",
+            {"employee": matched_employee, "active": 1, "is_enrolled": 1},
+        )
+        if not is_active_profile:
+            _invalidate_profiles_cache()
+            return {
+                "ok": False,
+                "matched": False,
+                "message": "No enrolled employee matched confidently. Please adjust lighting or verify enrollment.",
+            }
+
+        emp_info = get_employee_details(matched_employee)
+        if not emp_info or emp_info["status"] != "Active":
             return {
                 "ok": False,
                 "matched": False,
@@ -515,22 +514,6 @@ def identify_employee(image_data):
             }
 
         status = check_today_attendance_status(matched_employee)
-        if status.get("completed"):
-            return {
-                "ok": False,
-                "matched": True,
-                "already_completed": True,
-                "employee": matched_employee,
-                "employee_name": employee_doc.employee_name or matched_employee,
-                "department": employee_doc.department or "",
-                "designation": employee_doc.designation or "",
-                "similarity": round(match["similarity"], 4),
-                "out_time_blocked": status.get("out_time_blocked", False),
-                "allowed_time": status.get("allowed_time"),
-                "message": status.get("message") or _("Already today IN and OUT log created"),
-                "auto_action": None,
-            }
-
         token = uuid.uuid4().hex
         cache_key = "hns_face_detection:confirmation:" + token
         frappe.cache().set_value(
@@ -540,15 +523,14 @@ def identify_employee(image_data):
         )
 
         auto_action = status.get("next_action") or "IN"
-
         return {
             "ok": True,
             "matched": True,
             "already_completed": False,
             "employee": matched_employee,
-            "employee_name": employee_doc.employee_name or matched_employee,
-            "department": employee_doc.department or "",
-            "designation": employee_doc.designation or "",
+            "employee_name": emp_info["employee_name"],
+            "department": emp_info["department"],
+            "designation": emp_info["designation"],
             "similarity": round(match["similarity"], 4),
             "confirmation_token": token,
             "expires_in_seconds": CONFIRMATION_TTL_SECONDS,
@@ -570,61 +552,57 @@ def identify_employee(image_data):
 
 
 @frappe.whitelist(allow_guest=True)
-def confirm_attendance(confirmation_token, log_type):
+def confirm_attendance(confirmation_token=None, log_type="IN", punch_category=None, employee=None, employee_name=None, designation=None, department=None, notes=None, longitude=None, latitude=None, log=None, activity_log=None):
     try:
-        final_log_type = (log_type or "").upper()
+        eff_log = log or activity_log
+        final_log_type = (log_type or "IN").upper()
         if final_log_type not in ("IN", "OUT"):
-            frappe.throw("log_type must be IN or OUT.")
+            final_log_type = "IN"
 
-        if not isinstance(confirmation_token, str) or not re.fullmatch(r"[a-f0-9]{32}", confirmation_token):
-            frappe.throw("Invalid confirmation token. Identify the employee again.")
+        similarity = None
+        if confirmation_token and isinstance(confirmation_token, str) and re.fullmatch(r"[a-f0-9]{32}", confirmation_token):
+            cache_key = "hns_face_detection:confirmation:" + confirmation_token
+            payload = frappe.cache().get_value(cache_key)
+            if payload:
+                frappe.cache().delete_value(cache_key)
+                if not employee:
+                    employee = payload.get("employee")
+                similarity = payload.get("similarity")
 
-        cache_key = "hns_face_detection:confirmation:" + confirmation_token
-        payload = frappe.cache().get_value(cache_key)
-        if not payload:
-            frappe.throw("Confirmation expired or already used. Identify the employee again.")
+        emp_info = get_employee_details(employee)
+        if not emp_info:
+            frappe.throw("Valid employee record is required.")
 
-        token_user = payload.get("user")
-        if token_user != frappe.session.user and token_user != "Guest" and frappe.session.user != "Guest":
-            frappe.throw("This confirmation belongs to another user.", frappe.PermissionError)
-
-        frappe.cache().delete_value(cache_key)
-        employee = payload.get("employee")
-        if not employee or not frappe.db.exists("Employee", employee):
-            frappe.throw("Employee record no longer exists.")
-
-        employee_doc = frappe.get_doc("Employee", employee)
-        if employee_doc.status and employee_doc.status != "Active":
+        employee_doc = emp_info["doc"]
+        if emp_info["status"] != "Active":
             frappe.throw("Only active employees can check in/out.")
 
-        status = check_today_attendance_status(employee)
-        if status.get("completed"):
-            return {
-                "ok": False,
-                "status": "warning",
-                "already_completed": True,
-                "message": status.get("message") or _("Already today IN and OUT log created"),
-                "employee": employee,
-                "employee_name": employee_doc.employee_name or employee,
-            }
+        has_emp_changes = False
+        if employee_name and employee_name.strip() and employee_doc.employee_name != employee_name.strip():
+            employee_doc.employee_name = employee_name.strip()
+            has_emp_changes = True
+        if designation and frappe.db.exists("Designation", designation) and employee_doc.designation != designation:
+            employee_doc.designation = designation
+            has_emp_changes = True
+        if department and frappe.db.exists("Department", department) and employee_doc.department != department:
+            employee_doc.department = department
+            has_emp_changes = True
 
-        if final_log_type == "OUT":
-            gate_settings = frappe.get_single("Hns Gate Face Punching")
-            out_allowed, allowed_time = is_out_allowed(gate_settings)
-            if not out_allowed:
-                return {
-                    "ok": False,
-                    "status": "warning",
-                    "already_completed": True,
-                    "message": _("Already today IN log created. OUT entry is allowed after {0}").format(allowed_time),
-                    "employee": employee,
-                    "employee_name": employee_doc.employee_name or employee,
-                }
+        if has_emp_changes:
+            employee_doc.save(ignore_permissions=True)
 
         log_record = record_attendance_log(
             employee=employee,
             log_type=final_log_type,
-            similarity=payload.get("similarity"),
+            similarity=similarity,
+            punch_category=punch_category,
+            employee_name=employee_name or employee_doc.employee_name,
+            notes=notes,
+            longitude=longitude,
+            latitude=latitude,
+            log=eff_log,
+            designation=designation or employee_doc.designation,
+            department=department or employee_doc.department,
         )
 
         return {
@@ -632,11 +610,12 @@ def confirm_attendance(confirmation_token, log_type):
             "status": "success",
             "name": log_record.name,
             "employee": employee,
-            "employee_name": employee_doc.employee_name or employee,
+            "employee_name": employee_name or employee_doc.employee_name or employee,
             "log_type": final_log_type,
+            "punch_category": punch_category or log_record.punch_category,
             "time": str(log_record.time),
-            "similarity": round(float(payload.get("similarity") or 0.0), 4),
-            "message": f"Successfully marked {final_log_type} for {employee_doc.employee_name or employee}",
+            "similarity": round(float(similarity or 0.0), 4) if similarity else None,
+            "message": f"Successfully marked {final_log_type} for {employee_name or employee_doc.employee_name or employee}",
         }
     except frappe.ValidationError as e:
         return {
@@ -654,10 +633,82 @@ def confirm_attendance(confirmation_token, log_type):
 
 
 @frappe.whitelist(allow_guest=True)
+def record_rejected_punch(employee=None, employee_name=None, reason="", log_type="IN", punch_category="Attendance", longitude=None, latitude=None, log=None, activity_log=None, designation=None, department=None):
+    try:
+        eff_log = log or activity_log
+        checkin_time = now_datetime()
+        final_log_type = (log_type or "IN").upper()
+        if final_log_type not in ("IN", "OUT"):
+            final_log_type = "IN"
+
+        emp_info = None
+        if employee:
+            emp_info = get_employee_details(employee)
+        if not employee_name:
+            employee_name = emp_info["employee_name"] if emp_info else "Unidentified Person"
+
+        activity_dict = _parse_activity_log(eff_log)
+        loc = activity_dict.get("location") if isinstance(activity_dict.get("location"), dict) else {}
+        eff_latitude = loc.get("latitude") if loc.get("latitude") is not None else latitude
+        eff_longitude = loc.get("longitude") if loc.get("longitude") is not None else longitude
+
+        log_data = {
+            "doctype": "Hns Face Detection Log",
+            "employee": employee if (employee and frappe.db.exists("Employee", employee)) else None,
+            "employee_name": employee_name,
+            "department": department or (emp_info.get("department") if emp_info else None),
+            "designation": designation or (emp_info.get("designation") if emp_info else None),
+            "log_type": final_log_type,
+            "action": "Reject",
+            "punch_category": punch_category or "Attendance",
+            "time": checkin_time,
+            "notes": reason or "",
+            "log": json.dumps(activity_dict, indent=2),
+        }
+        if eff_longitude is not None and str(eff_longitude).strip():
+            log_data["longitude"] = str(eff_longitude)
+        if eff_latitude is not None and str(eff_latitude).strip():
+            log_data["latitude"] = str(eff_latitude)
+
+        log_doc = frappe.get_doc(log_data)
+        log_doc.insert(ignore_permissions=True)
+        frappe.db.commit()
+
+        return {
+            "ok": True,
+            "status": "success",
+            "name": log_doc.name,
+            "message": "Rejection logged successfully."
+        }
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "HNS Face Detection: record_rejected_punch failed")
+        return {
+            "ok": False,
+            "status": "error",
+            "message": "Failed to record rejection log."
+        }
+
+
+@frappe.whitelist(allow_guest=True)
+def get_master_options():
+    try:
+        designations = frappe.get_all("Designation", pluck="name", order_by="name asc")
+        departments = frappe.get_all("Department", pluck="name", order_by="name asc")
+        return {
+            "designations": designations,
+            "departments": departments,
+        }
+    except Exception:
+        return {"designations": [], "departments": []}
+
+
+@frappe.whitelist(allow_guest=True)
 def get_today_attendance(employee=None):
     try:
         if frappe.session.user != "Guest" and not employee and frappe.session.user != "Administrator":
-            employee = frappe.db.get_value("Employee", {"user_id": frappe.session.user}, "name")
+            emp_info = get_employee_details(frappe.session.user)
+            if emp_info:
+                employee = emp_info["name"]
 
         today_start = today() + " 00:00:00"
         filters = {"time": [">=", today_start]}
@@ -673,13 +724,12 @@ def get_today_attendance(employee=None):
         )
 
         status = check_today_attendance_status(employee) if employee else {}
-
         return {
             "employee": employee,
             "logs": logs,
             "next_action": status.get("next_action") if employee else ("OUT" if logs and logs[-1].log_type == "IN" else "IN"),
-            "already_completed": status.get("completed", False) if employee else False,
-            "message": status.get("message") if employee else None,
+            "already_completed": False,
+            "message": None,
             "count": len(logs)
         }
     except Exception:
@@ -687,12 +737,13 @@ def get_today_attendance(employee=None):
         raise
 
 
-@frappe.whitelist()
+@frappe.whitelist(allow_guest=True)
 def get_face_profile_status(employee=None):
     try:
-        _require_login()
-        if not employee and frappe.session.user != "Administrator":
-            employee = frappe.db.get_value("Employee", {"user_id": frappe.session.user}, "name")
+        if not employee and frappe.session.user not in ("Administrator", "Guest"):
+            emp_info = get_employee_details(frappe.session.user)
+            if emp_info:
+                employee = emp_info["name"]
 
         if not employee:
             frappe.throw("Employee is required.")
@@ -707,11 +758,18 @@ def get_face_profile_status(employee=None):
         if not profile:
             return {"enrolled": False, "employee": employee}
 
+        enrolled_on_val = profile.enrolled_on
+        if enrolled_on_val:
+            try:
+                enrolled_on_val = frappe.utils.format_datetime(enrolled_on_val, "dd-MM-yyyy hh:mm a")
+            except Exception:
+                enrolled_on_val = str(enrolled_on_val).split(".")[0]
+
         return {
             "enrolled": bool(profile.is_enrolled and profile.active and profile.embedding),
             "employee": profile.employee,
             "employee_name": profile.employee_name,
-            "enrolled_on": profile.enrolled_on,
+            "enrolled_on": enrolled_on_val,
         }
     except Exception:
         frappe.log_error(frappe.get_traceback(), "HNS Face Detection: get_face_profile_status failed")
@@ -736,17 +794,41 @@ def get_kiosk_settings():
         }
 
 
-@frappe.whitelist()
+@frappe.whitelist(allow_guest=True)
+def update_kiosk_settings(auto_detect=None, mode=None, punch_category=None):
+    try:
+        settings = frappe.get_single("Hns Gate Face Punching")
+        if auto_detect is not None:
+            settings.auto_detect = frappe.utils.cint(auto_detect)
+        if mode is not None:
+            settings.mode = mode
+        if punch_category is not None:
+            settings.punch_category = punch_category
+        settings.save(ignore_permissions=True)
+        frappe.db.commit()
+        return {
+            "ok": True,
+            "auto_detect": frappe.utils.cint(settings.auto_detect),
+            "mode": settings.mode or "",
+            "punch_category": settings.punch_category or ""
+        }
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "HNS Face Detection: update_kiosk_settings failed")
+        raise
+
+
+@frappe.whitelist(allow_guest=True)
 def get_hns_face_detection_logs(log_date=None, limit=50):
     return _get_face_logs(log_date, limit)
 
-@frappe.whitelist()
+
+@frappe.whitelist(allow_guest=True)
 def get_face_detection_logs(log_date=None, limit=50):
     return _get_face_logs(log_date, limit)
 
+
 def _get_face_logs(log_date=None, limit=50):
     try:
-        _require_login()
         target_date = log_date or today()
         start_datetime = f"{target_date} 00:00:00"
         end_datetime = f"{target_date} 23:59:59"
@@ -756,9 +838,9 @@ def _get_face_logs(log_date=None, limit=50):
             filters={
                 "time": ["between", [start_datetime, end_datetime]]
             },
-            fields=["name", "employee", "employee_name", "time", "log_type", "punch_category"],
+            fields=["name", "employee", "employee_name", "department", "designation", "time", "log_type", "punch_category", "action", "notes", "log"],
             order_by="time desc, creation desc",
-            limit_page_length=frappe.utils.cint(limit) or 50,
+            limit_page_length=frappe.utils.cint(limit) or 100,
         )
 
         employee_names = {}
@@ -767,21 +849,43 @@ def _get_face_logs(log_date=None, limit=50):
             emp = row.employee
             if not row.employee_name:
                 if emp not in employee_names:
-                    employee_names[emp] = frappe.db.get_value("Employee", emp, "employee_name") or emp
+                    emp_info = get_employee_details(emp)
+                    employee_names[emp] = emp_info["employee_name"] if emp_info else emp
                 emp_name = employee_names[emp]
             else:
                 emp_name = row.employee_name
 
-            time_str = frappe.utils.format_time(row.time) if row.time else ""
+            time_str = ""
+            if row.time:
+                try:
+                    time_str = frappe.utils.format_time(row.time, "hh:mm:ss a")
+                except Exception:
+                    time_str = frappe.utils.format_time(row.time)
             category = row.punch_category or "Attendance"
+            is_rejected = (row.action == "Reject")
+            reject_reason = ""
+            if row.notes:
+                try:
+                    notes_obj = json.loads(row.notes)
+                    if isinstance(notes_obj, dict):
+                        reject_reason = notes_obj.get("reject_reason") or notes_obj.get("reason", "")
+                    elif isinstance(notes_obj, str):
+                        reject_reason = notes_obj
+                except Exception:
+                    reject_reason = str(row.notes)
 
             formatted_logs.append({
                 "name": row.name,
                 "employee": emp,
                 "employee_name": emp_name,
+                "department": row.department or "",
+                "designation": row.designation or "",
                 "time": time_str,
                 "log_type": row.log_type,
+                "action": row.action or ("Reject" if is_rejected else "Confirm"),
                 "category": category,
+                "is_rejected": is_rejected,
+                "reject_reason": reject_reason,
             })
 
         return {

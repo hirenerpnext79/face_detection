@@ -22,8 +22,14 @@ dependencies = [
     "onnx",
 ]
 
-# System OS Dependencies (Debian/Ubuntu):
-# Install via APT: sudo apt update && sudo apt install -y libgl1 libglib2.0-0 libsm6 libxext6 libxrender1
+[deploy.dependencies.apt]
+packages = [
+    "libgl1",
+    "libglib2.0-0",
+    "libsm6",
+    "libxext6",
+    "libxrender1",
+]
 
 [tool.flit.module]
 name = "hns_face_detection"

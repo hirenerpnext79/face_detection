@@ -10,18 +10,8 @@ import warnings
 
 try:
     import cv2
-except ImportError as _cv2_err:
-    if "libGL" in str(_cv2_err) or "cannot open shared object file" in str(_cv2_err):
-        import subprocess
-        import sys
-        try:
-            subprocess.run([sys.executable, "-m", "pip", "uninstall", "-y", "opencv-python"], check=False)
-            subprocess.run([sys.executable, "-m", "pip", "install", "opencv-python-headless"], check=False)
-            import cv2
-        except Exception:
-            raise _cv2_err
-    else:
-        raise
+except ImportError:
+    cv2 = None
 import frappe
 from frappe import _
 import numpy as np
@@ -142,6 +132,9 @@ def _decode_image(image_data):
 
     if not raw or len(raw) > MAX_IMAGE_BYTES:
         frappe.throw("Image is empty or exceeds the 5 MB limit.")
+
+    if cv2 is None:
+        frappe.throw("OpenCV (cv2) is not installed in the server environment. Please ensure 'opencv-python-headless' is installed on the bench.")
 
     arr = np.frombuffer(raw, dtype=np.uint8)
     image = cv2.imdecode(arr, cv2.IMREAD_COLOR)

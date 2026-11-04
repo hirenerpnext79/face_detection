@@ -1,4 +1,4 @@
-__version__ = "31.10.26"
+__version__ = "04.11.26"
 
 try:
     import cv2
